@@ -1,0 +1,13 @@
+
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Avalonia.DrmKit.OnScreenKeyboard.OnScreenKeyboard">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*">
+    <UniformGrid Rows="1" Columns="9" Grid.Row="0" x:Name="Row0"/>
+    <UniformGrid Rows="1" Columns="10" Grid.Row="1" x:Name="Row1"/>
+    <UniformGrid Rows="1" Columns="10" Grid.Row="2" x:Name="Row2"/>
+    <UniformGrid Rows="1" Columns="9" Grid.Row="3" x:Name="Row3"/>
+    <UniformGrid Rows="1" Columns="9" Grid.Row="4" x:Name="Row4"/>
+    <UniformGrid Rows="1" Columns="5" Grid.Row="5" x:Name="Row5"/>
+  </Grid>
+</UserControl>
