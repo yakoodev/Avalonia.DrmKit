@@ -1,55 +1,65 @@
-
-name: CI
+name: NuGet
 
 on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to NuGet'
+        required: false
+        default: 'false'
   push:
-    branches: [ "main", "master" ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ "main", "master" ]
+    tags:
+      - 'v*'     # v0.1.0, v1.2.3
+
+env:
+  PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
 
 jobs:
-  build:
+  pack:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
+          dotnet-version: '8.0.x'
+
+      - name: Debug refs
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
 
       - name: Restore
         run: dotnet restore
 
-      - name: Build
-        run: dotnet build --configuration Release --no-restore
+      - name: Build (Release)
+        run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Pack library
-        run: |
-          dotnet pack ./Avalonia.DrmKit/Avalonia.DrmKit.csproj             -c Release             -o ./artifacts             --no-build
+      - name: Pack
+        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build
 
-      - name: Upload artifacts
+      - name: Upload nupkg
         uses: actions/upload-artifact@v4
         with:
-          name: nuget
+          name: nupkg
           path: artifacts/*.nupkg
 
-  publish-nuget:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+  publish:
+    needs: pack
     runs-on: ubuntu-latest
+    # публикуем если:
+    # 1) пуш тега v* ИЛИ
+    # 2) ручной запуск с галочкой publish=true
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: nuget
+          name: nupkg
           path: artifacts
 
       - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          dotnet nuget push "artifacts/*.nupkg"             --api-key "$NUGET_API_KEY"             --source https://api.nuget.org/v3/index.json             --skip-duplicate
+        run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
