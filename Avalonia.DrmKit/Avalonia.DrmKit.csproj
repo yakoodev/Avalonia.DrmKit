@@ -15,18 +15,16 @@
     <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
     <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
 
-    <!-- Документация в пакет (полезно для IDE) -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
-  <!-- README должен попасть в корень пакета -->
+  <!-- README должен лежать рядом с этим .csproj -->
   <ItemGroup>
     <None Include="README.NuGet.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
-  <!-- зависимости (по твоему nuspec) -->
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.8" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.8" />

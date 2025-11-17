@@ -29,19 +29,32 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Pack (version from tag only)
+      - name: Resolve versions from tag
+        id: ver
+        shell: bash
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
           if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
-          [[ -z "$VERSION" ]] && { echo "ERROR: empty version"; exit 1; }
-          echo "Packing version $VERSION"
-          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="$VERSION"
+          [[ -z "$VERSION" ]] && { echo "Empty version from tag"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "fallback=${VERSION}-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Main: $VERSION"
+          echo "Fallback: ${VERSION}-ci.${GITHUB_RUN_NUMBER}"
 
-      - name: Show nuspec (ID/Version)
+      - name: Pack (main)
         run: |
-          FILE=$(ls artifacts/*.nupkg | head -n1)
-          echo "NUPKG=$FILE"
-          unzip -p "$FILE" *.nuspec | sed -n '1,200p'
+          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
+
+      - name: Pack (fallback, anti-409)
+        run: |
+          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.fallback }}"
+
+      - name: Show nuspecs
+        run: |
+          for f in artifacts/*.nupkg; do
+            echo "== $f =="
+            unzip -p "$f" *.nuspec | sed -n '1,60p'
+          done
 
       - name: Upload nupkg
         uses: actions/upload-artifact@v4
@@ -58,24 +71,51 @@ jobs:
           name: nupkg
           path: artifacts
 
-      - name: Detect id/version
-        id: detect
+      - name: Detect main/fallback files
+        id: pick
         shell: bash
         run: |
-          FILE=$(ls artifacts/*.nupkg | head -n1)
-          ID=$(unzip -p "$FILE" *.nups* | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
-          VER=$(unzip -p "$FILE" *.nups* | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
-          echo "Package: $ID $VER"
-          echo "id=$ID"  >> "$GITHUB_OUTPUT"
-          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          set -e
+          MAIN=$(ls artifacts/*.nupkg | sort | head -n1)
+          # возьмём как main тот, где НЕТ '-ci.'
+          for f in artifacts/*.nupkg; do
+            if [[ "$f" != *"-ci."* ]]; then MAIN="$f"; fi
+          done
+          FALL=""
+          for f in artifacts/*.nupkg; do
+            if [[ "$f" == *"-ci."* ]]; then FALL="$f"; fi
+          done
+          echo "main=$MAIN"     >> "$GITHUB_OUTPUT"
+          echo "fallback=$FALL" >> "$GITHUB_OUTPUT"
+          echo "MAIN: $MAIN"
+          echo "FALLBACK: $FALL"
 
-      - name: Push to NuGet.org
+      - name: Push main to NuGet.org
+        id: push_main
+        continue-on-error: true
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -e
-          echo "Pushing ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }}"
-          dotnet nuget push "artifacts/*.nupkg" \
+          FILE="${{ steps.pick.outputs.main }}"
+          echo "Pushing MAIN: $FILE"
+          dotnet nuget push "$FILE" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
+
+      - name: Push fallback to NuGet.org (only if main conflicted)
+        if: steps.push_main.outcome == 'failure'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          set -e
+          FILE="${{ steps.pick.outputs.fallback }}"
+          if [[ -z "$FILE" ]]; then
+            echo "No fallback file found"; exit 1
+          fi
+          echo "Pushing FALLBACK: $FILE"
+          dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
             --skip-duplicate
