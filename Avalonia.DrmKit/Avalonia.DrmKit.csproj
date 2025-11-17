@@ -6,7 +6,7 @@
     <AssemblyName>Avalonia.DrmKit</AssemblyName>
     <RootNamespace>Avalonia.DrmKit</RootNamespace>
     <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
-    <PackageId>Avalonia.DrmKit</PackageId>
+    <PackageId>Avalonia.DrmKit.Bezdar</PackageId>
     <Authors>bezdar-yakoo</Authors>
     <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard, soft cursor, smart DRM bootstrap.</Description>
     <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
