@@ -1,15 +1,15 @@
 name: NuGet
 
+concurrency:
+  group: nuget-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: 'Публиковать на NuGet'
-        required: false
-        default: 'false'
       version:
-        description: 'Версия пакета (если запуск вручную)'
-        required: false
+        description: 'Версия пакета (например, 0.1.0)'
+        required: true
         default: ''
   push:
     tags:
@@ -23,10 +23,13 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
@@ -36,22 +39,31 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Pack (version from tag or manual input)
+      - name: Resolve version (from dispatch input or tag)
+        id: ver
+        shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
             RAW="${GITHUB_REF#refs/tags/}"
             if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
-          else
-            VERSION="${{ inputs.version }}"
           fi
-          [[ -z "$VERSION" ]] && { echo "ERROR: version is empty"; exit 1; }
-          echo "Packing version $VERSION"
-          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="$VERSION"
+          if [[ -z "$VERSION" ]]; then
+            echo "ERROR: empty version"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+
+      - name: Pack
+        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
 
       - name: Show nuspec (ID/Version)
+        shell: bash
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
-          unzip -p "$FILE" *.nuspec | sed -n '1,200p'
+          echo "NUPKG=$FILE"
+          unzip -p "$FILE" "*.nuspec" | sed -n '1,150p'
 
       - name: Upload nupkg
         uses: actions/upload-artifact@v4
@@ -62,33 +74,38 @@ jobs:
   publish:
     needs: pack
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download nupkg
+        uses: actions/download-artifact@v4
         with:
           name: nupkg
           path: artifacts
 
-      # Проверяем через Registration (видит listed/unlisted), но всё равно полагаемся на ответ push
-      - name: Detect id/version (Registration info)
-        id: detect
+      - name: Read PackageId/Version
+        id: meta
         shell: bash
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
-          ID=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
-          VER=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
+          ID=$(unzip -p "$FILE" "*.nuspec" | sed -n 's/.*<id>\(.*\)<\/id>.*/\1/p' | head -n1)
+          VER=$(unzip -p "$FILE" "*.nuspec" | sed -n 's/.*<version>\(.*\)<\/version>.*/\1/p' | head -n1)
+          echo "Package: $ID $VER"
           echo "id=$ID"  >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "Package: $ID $VER"
+
+      - name: Guard reserved prefix Avalonia.*
+        if: startsWith(steps.meta.outputs.id, 'Avalonia.')
+        run: |
+          echo "ERROR: PackageId с префиксом 'Avalonia.' зарезервирован NuGet (prefix reservation). Смените PackageId."; 
+          exit 1
 
       - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -e
-          echo "Pushing ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }}"
-          # Если версия уже была когда-либо загружена, nuget.org вернёт 409 — НЕ перезаписывает версии.
-          dotnet nuget push "artifacts/*.nupkg" \
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          echo "Pushing: $FILE"
+          dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
             --skip-duplicate
