@@ -21,7 +21,7 @@
 		<IsPackable>true</IsPackable>
 
 		<PackageIcon>icon.png</PackageIcon>
-  		<PackageReleaseNotes>Первый публичный релиз: DRM/FB ввод, экранная клавиатура, софт-курсор. Обновленеи иконки</PackageReleaseNotes>
+  		<PackageReleaseNotes>Первый публичный релиз: DRM/FB ввод, экранная клавиатура, софт-курсор. Обновление иконки</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<!-- README лежит рядом с этим .csproj -->

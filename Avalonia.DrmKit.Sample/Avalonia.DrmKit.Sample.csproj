@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -11,8 +11,6 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.8" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Avalonia.DrmKit\Avalonia.DrmKit.csproj" />
+    <PackageReference Include="DrmKit.Avalonia" Version="0.1.2" />
   </ItemGroup>
 </Project>

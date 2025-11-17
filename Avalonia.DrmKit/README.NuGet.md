@@ -1,5 +1,5 @@
 
-# Avalonia.DrmKit
+# DrmKit.Avalonia
 
 Утилиты для приложений **Avalonia** под **Linux DRM/Framebuffer**:
 - клавиатура evdev (EN/RU, Alt+Shift, CapsLock);
@@ -9,7 +9,7 @@
 
 ## Установка
 ```bash
-dotnet add package Avalonia.DrmKit
+dotnet add package DrmKit.Avalonia
 ```
 
 ## Быстрый старт
