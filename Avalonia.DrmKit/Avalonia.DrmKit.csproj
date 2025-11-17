@@ -5,15 +5,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Avalonia.DrmKit</AssemblyName>
     <RootNamespace>Avalonia.DrmKit</RootNamespace>
+    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
     <PackageId>Avalonia.DrmKit</PackageId>
-    <Version>0.1.0</Version> <!-- версию можно менять тегом, но базовая нужна -->
-    <Authors>Твоё Имя</Authors>
+    <Authors>bezdar-yakoo</Authors>
     <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard, soft cursor, smart DRM bootstrap.</Description>
     <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- README должен ЛЕЖАТЬ рядом с этим csproj И попадать в пакет -->
+    <None Include="README.NuGet.md" Pack="true" PackagePath="" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.8" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.8" />

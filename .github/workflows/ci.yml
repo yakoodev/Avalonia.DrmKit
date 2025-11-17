@@ -1,25 +1,18 @@
 name: NuGet
 
+# Мьютекс: один запуск на тег/реф. Исключает одновременные пуши.
+concurrency:
+  group: nuget-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
-  # запуск вручную из Actions
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Публиковать на NuGet'
-        required: false
-        default: 'false'
-      version:
-        description: 'Версия пакета (если запуск вручную)'
-        required: false
-        default: ''
-  # публикация по тегу релиза
+  # публикация только по тегам, чтобы не дёргать руками:
   push:
     tags:
       - 'v*'        # v0.1.0
       - '*.*.*'     # 0.1.0
 
 env:
-  # путём до твоего проекта библиотеки
   PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
 
 jobs:
@@ -30,19 +23,7 @@ jobs:
         with: { fetch-depth: 0 }
 
       - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Debug refs
-        run: |
-          echo "event=${{ github.event_name }}"
-          echo "ref=${{ github.ref }}"
-          echo "tag=${GITHUB_REF#refs/tags/}"
-
-      - name: List tree
-        run: |
-          pwd
-          find . -maxdepth 3 -type f \( -name "*.sln" -o -name "*.csproj" -o -name "README.NuGet.md" \) -print
+        with: { dotnet-version: '8.0.x' }
 
       - name: Restore
         run: dotnet restore
@@ -50,26 +31,17 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Pack
+      - name: Pack (version from tag)
         run: |
-          # Берём версию из тега или из ручного инпута
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
-            RAW="${GITHUB_REF#refs/tags/}"
-            if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
-          else
-            VERSION="${{ inputs.version }}"
-          fi
-          if [[ -z "$VERSION" ]]; then
-            echo "ERROR: version is empty. Provide tag vX.Y.Z or inputs.version"
-            exit 1
-          fi
+          RAW="${GITHUB_REF#refs/tags/}"
+          if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
+          [[ -z "$VERSION" ]] && { echo "ERROR: empty version"; exit 1; }
           echo "Packing version $VERSION"
           dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="$VERSION"
 
-      - name: Show nuspec (ID/Version/Readme)
+      - name: Show nuspec (ID/Version)
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
-          echo "NUPKG=$FILE"
           unzip -p "$FILE" *.nuspec | sed -n '1,200p'
 
       - name: Upload nupkg
@@ -81,40 +53,31 @@ jobs:
   publish:
     needs: pack
     runs-on: ubuntu-latest
-    # публикуем либо по тегу, либо по ручному запуску с publish=true
-    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: nupkg
           path: artifacts
 
-      - name: Detect package id/version & check existence on NuGet
+      - name: Detect id/version
         id: detect
         shell: bash
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
           ID=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
           VER=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
-          LID=$(echo "$ID" | tr '[:upper:]' '[:lower:]')
-          URL="https://api.nuget.org/v3-flatcontainer/$LID/$VER/$LID.$VER.nupkg"
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
-          echo "Package: $ID $VER  -> NuGet HTTP $CODE"
-          echo "id=$ID"   >> "$GITHUB_OUTPUT"
-          echo "ver=$VER"  >> "$GITHUB_OUTPUT"
-          if [ "$CODE" = "200" ]; then echo "exists=true"  >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Skip push (already exists)
-        if: steps.detect.outputs.exists == 'true'
-        run: |
-          echo "ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }} уже существует на NuGet. Обнови версию/tag."
-          exit 0
+          echo "id=$ID"  >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "Package: $ID $VER"
 
       - name: Push to NuGet.org
-        if: steps.detect.outputs.exists != 'true'
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
+          set -e
+          echo "Pushing ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }}"
+          # Если версия уже занята (в т.ч. валидация/анлист) — nuget вернёт 409.
+          # --skip-duplicate оставляем, чтобы run не «краснел».
           dotnet nuget push "artifacts/*.nupkg" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
