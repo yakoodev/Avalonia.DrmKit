@@ -1,22 +1,23 @@
 name: NuGet
 
+# не даём параллельно публиковать один и тот же ref (тег)
 concurrency:
   group: nuget-${{ github.ref }}
   cancel-in-progress: true
 
 on:
-  # ручной запуск: укажи версию руками
+  # ручной запуск из Actions
   workflow_dispatch:
     inputs:
       version:
-        description: 'Версия пакета, напр. 0.2.0'
+        description: 'Версия пакета (например, 0.1.0)'
         required: true
         default: ''
   # автозапуск по тегу
   push:
     tags:
-      - 'v*'
-      - '*.*.*'
+      - 'v*'        # v0.1.0
+      - '*.*.*'     # 0.1.0
 
 env:
   PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
@@ -29,7 +30,8 @@ jobs:
         with: { fetch-depth: 0 }
 
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
+        with:
+          dotnet-version: '8.0.x'
 
       - name: Restore
         run: dotnet restore
@@ -41,9 +43,8 @@ jobs:
         id: ver
         shell: bash
         run: |
-          VERSION_INPUT="${{ github.event.inputs.version }}"
-          if [[ -n "$VERSION_INPUT" ]]; then
-            VERSION="$VERSION_INPUT"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
           else
             RAW="${GITHUB_REF#refs/tags/}"
             if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
@@ -59,7 +60,7 @@ jobs:
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
           echo "NUPKG=$FILE"
-          unzip -p "$FILE" *.nuspec | sed -n '1,120p'
+          unzip -p "$FILE" *.nuspec | sed -n '1,150p'
 
       - name: Upload nupkg
         uses: actions/upload-artifact@v4
@@ -87,11 +88,12 @@ jobs:
           echo "id=$ID"  >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Guard: disallow reserved Avalonia.* prefix
+      # защитим от случайного зарезервированного префикса
+      - name: Guard: forbid reserved Avalonia.* prefix
         shell: bash
         run: |
           if echo "${{ steps.detect.outputs.id }}" | grep -qiE '^Avalonia\.'; then
-            echo "ERROR: PackageId with reserved prefix 'Avalonia.' запрещён, смените PackageId."; exit 1;
+            echo "ERROR: PackageId с префиксом 'Avalonia.' запрещён из-за prefix reservation. Смените PackageId."; exit 1;
           fi
 
       - name: Push to NuGet.org
