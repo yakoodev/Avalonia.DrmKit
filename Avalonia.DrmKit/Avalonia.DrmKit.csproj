@@ -1,38 +1,37 @@
 <Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
+		<PackageId>DrmKit.Avalonia</PackageId>
 
-    <!-- NuGet metadata -->
-    <PackageId>DrmKit.Avalonia</PackageId>
-    <Authors>bezdar-yakoo</Authors>
-    <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard (overlay, stylable), soft cursor, smart DRM↔Desktop bootstrap.</Description>
-    <PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
-    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
+		<Authors>bezdar-yakoo</Authors>
+		<Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard (overlay, stylable), soft cursor, smart DRM↔Desktop bootstrap.</Description>
+		<PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
+		<PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
 
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <IsPackable>true</IsPackable>
-  </PropertyGroup>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<IsPackable>true</IsPackable>
+	</PropertyGroup>
 
-  <!-- README лежит РЯДОМ с этим csproj -->
-  <ItemGroup>
-    <None Include="README.NuGet.md" Pack="true" PackagePath="" />
-  </ItemGroup>
+	<!-- README лежит рядом с этим .csproj -->
+	<ItemGroup>
+		<None Include="README.NuGet.md" Pack="true" PackagePath="" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.8" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.8" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
-    <PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.8" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-  </ItemGroup>
-
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="11.3.8" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.8" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
+		<PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.8" />
+		<PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+	</ItemGroup>
 </Project>

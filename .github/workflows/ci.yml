@@ -1,6 +1,5 @@
 name: NuGet
 
-# Исключаем параллельные пушки на один и тот же тег
 concurrency:
   group: nuget-${{ github.ref }}
   cancel-in-progress: true
@@ -8,8 +7,8 @@ concurrency:
 on:
   push:
     tags:
-      - 'v*'        # v0.1.0
-      - '*.*.*'     # 0.1.0
+      - 'v*'
+      - '*.*.*'
 
 env:
   PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
@@ -42,15 +41,13 @@ jobs:
           echo "Main: $VERSION"
           echo "Fallback: ${VERSION}-ci.${GITHUB_RUN_NUMBER}"
 
-      # Собираем основной пакет
       - name: Pack (main)
         run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
 
-      # И сразу запасной, на случай 409 (зарезервированная версия)
       - name: Pack (fallback)
         run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.fallback }}"
 
-      - name: Show nuspecs (ID/Version)
+      - name: Show nuspecs
         run: |
           for f in artifacts/*.nupkg; do
             echo "== $f =="
@@ -76,7 +73,6 @@ jobs:
         id: pick
         shell: bash
         run: |
-          # main = пакет БЕЗ суффикса -ci., fallback = пакет С суффиксом
           MAIN=""
           FALL=""
           for f in artifacts/*.nupkg; do
@@ -89,8 +85,6 @@ jobs:
           echo "MAIN: $MAIN"
           echo "FALLBACK: $FALL"
 
-      # Пытаемся опубликовать ОСНОВНОЙ — БЕЗ --skip-duplicate,
-      # чтобы 409 дал НЕ нулевой код и мы смогли перейти к fallback.
       - name: Push MAIN to NuGet.org (no skip-duplicate)
         id: push_main
         continue-on-error: true
@@ -102,11 +96,8 @@ jobs:
           echo "Pushing MAIN: $FILE"
           dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
-            --api-key "$NUGET_API_KEY" \
-            --verbosity detailed
+            --api-key "$NUGET_API_KEY"
 
-      # Если MAIN свалился (в т.ч. из-за 409),
-      # публикуем fallback с --skip-duplicate
       - name: Push FALLBACK to NuGet.org (on MAIN failure)
         if: steps.push_main.outcome != 'success'
         env:
@@ -118,9 +109,8 @@ jobs:
           dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
-            --skip-duplicate --verbosity detailed
+            --skip-duplicate
 
-      # Печать результата
       - name: Summary
         run: |
           echo "MAIN outcome:  ${{ steps.push_main.outcome }}"
