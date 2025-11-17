@@ -5,6 +5,14 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  # ручной запуск: укажи версию руками
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия пакета, напр. 0.2.0'
+        required: true
+        default: ''
+  # автозапуск по тегу
   push:
     tags:
       - 'v*'
@@ -29,30 +37,29 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Resolve versions from tag
+      - name: Resolve version (from dispatch input or tag)
         id: ver
         shell: bash
         run: |
-          RAW="${GITHUB_REF#refs/tags/}"
-          if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
-          [[ -z "$VERSION" ]] && { echo "ERROR: empty version from tag"; exit 1; }
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          if [[ -n "$VERSION_INPUT" ]]; then
+            VERSION="$VERSION_INPUT"
+          else
+            RAW="${GITHUB_REF#refs/tags/}"
+            if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
+          fi
+          [[ -z "$VERSION" ]] && { echo "ERROR: empty version"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "fallback=${VERSION}-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "Main: $VERSION"
-          echo "Fallback: ${VERSION}-ci.${GITHUB_RUN_NUMBER}"
+          echo "Version: $VERSION"
 
-      - name: Pack (main)
+      - name: Pack
         run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
 
-      - name: Pack (fallback)
-        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.fallback }}"
-
-      - name: Show nuspecs
+      - name: Show nuspec (ID/Version)
         run: |
-          for f in artifacts/*.nupkg; do
-            echo "== $f =="
-            unzip -p "$f" *.nuspec | sed -n '1,80p'
-          done
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          echo "NUPKG=$FILE"
+          unzip -p "$FILE" *.nuspec | sed -n '1,120p'
 
       - name: Upload nupkg
         uses: actions/upload-artifact@v4
@@ -69,48 +76,32 @@ jobs:
           name: nupkg
           path: artifacts
 
-      - name: Detect main/fallback files
-        id: pick
+      - name: Detect id/version
+        id: detect
         shell: bash
         run: |
-          MAIN=""
-          FALL=""
-          for f in artifacts/*.nupkg; do
-            if [[ "$f" == *"-ci."* ]]; then FALL="$f"; else MAIN="$f"; fi
-          done
-          [[ -z "$MAIN" ]] && { echo "No main nupkg found"; exit 1; }
-          [[ -z "$FALL" ]] && { echo "No fallback nupkg found"; exit 1; }
-          echo "main=$MAIN"     >> "$GITHUB_OUTPUT"
-          echo "fallback=$FALL" >> "$GITHUB_OUTPUT"
-          echo "MAIN: $MAIN"
-          echo "FALLBACK: $FALL"
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          ID=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
+          VER=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
+          echo "Package: $ID $VER"
+          echo "id=$ID"  >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Push MAIN to NuGet.org (no skip-duplicate)
-        id: push_main
-        continue-on-error: true
+      - name: Guard: disallow reserved Avalonia.* prefix
+        shell: bash
+        run: |
+          if echo "${{ steps.detect.outputs.id }}" | grep -qiE '^Avalonia\.'; then
+            echo "ERROR: PackageId with reserved prefix 'Avalonia.' запрещён, смените PackageId."; exit 1;
+          fi
+
+      - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -e
-          FILE="${{ steps.pick.outputs.main }}"
-          echo "Pushing MAIN: $FILE"
-          dotnet nuget push "$FILE" \
-            --source https://api.nuget.org/v3/index.json \
-            --api-key "$NUGET_API_KEY"
-
-      - name: Push FALLBACK to NuGet.org (on MAIN failure)
-        if: steps.push_main.outcome != 'success'
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          set -e
-          FILE="${{ steps.pick.outputs.fallback }}"
-          echo "Pushing FALLBACK: $FILE"
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          echo "Pushing: $FILE"
           dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
             --skip-duplicate
-
-      - name: Summary
-        run: |
-          echo "MAIN outcome:  ${{ steps.push_main.outcome }}"
