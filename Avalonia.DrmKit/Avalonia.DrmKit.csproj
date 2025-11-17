@@ -19,11 +19,15 @@
 		<IncludeSymbols>true</IncludeSymbols>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 		<IsPackable>true</IsPackable>
+
+		<PackageIcon>icon.png</PackageIcon>
+  		<PackageReleaseNotes>Первый публичный релиз: DRM/FB ввод, экранная клавиатура, софт-курсор. Обновленеи иконки</PackageReleaseNotes>
 	</PropertyGroup>
 
 	<!-- README лежит рядом с этим .csproj -->
 	<ItemGroup>
 		<None Include="README.NuGet.md" Pack="true" PackagePath="" />
+		<None Include="icon.png" Pack="true" PackagePath="" />
 	</ItemGroup>
 
 	<ItemGroup>
