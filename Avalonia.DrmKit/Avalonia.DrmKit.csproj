@@ -9,7 +9,6 @@
     <Version>0.1.0</Version> <!-- версию можно менять тегом, но базовая нужна -->
     <Authors>Твоё Имя</Authors>
     <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard, soft cursor, smart DRM bootstrap.</Description>
-    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

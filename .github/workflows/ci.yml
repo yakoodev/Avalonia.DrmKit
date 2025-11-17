@@ -7,9 +7,13 @@ on:
         description: 'Publish to NuGet'
         required: false
         default: 'false'
+      version:
+        description: 'Package version (if manual run)'
+        required: false
+        default: ''
   push:
     tags:
-      - 'v*'     # v0.1.0, v1.2.3
+      - 'v*'   # v0.1.0
 
 env:
   PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
@@ -22,14 +26,19 @@ jobs:
         with: { fetch-depth: 0 }
 
       - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+        with: { dotnet-version: '8.0.x' }
 
       - name: Debug refs
         run: |
           echo "event=${{ github.event_name }}"
           echo "ref=${{ github.ref }}"
-          echo "sha=${{ github.sha }}"
+          echo "tag-version=${GITHUB_REF#refs/tags/v}"
+
+      - name: List tree
+        run: |
+          pwd
+          ls -la
+          find . -maxdepth 3 -type f -print
 
       - name: Restore
         run: dotnet restore
@@ -38,7 +47,24 @@ jobs:
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
       - name: Pack
-        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "ERROR: version is empty. Provide tag vX.Y.Z or inputs.version"
+            exit 1
+          fi
+          echo "Packing version $VERSION"
+          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="$VERSION"
+
+      - name: Show nuspec
+        run: |
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          echo "NUPKG=$FILE"
+          unzip -p "$FILE" *.nuspec | sed -n '1,200p'
 
       - name: Upload nupkg
         uses: actions/upload-artifact@v4
@@ -49,9 +75,6 @@ jobs:
   publish:
     needs: pack
     runs-on: ubuntu-latest
-    # публикуем если:
-    # 1) пуш тега v* ИЛИ
-    # 2) ручной запуск с галочкой publish=true
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
     steps:
       - uses: actions/download-artifact@v4
@@ -62,4 +85,8 @@ jobs:
       - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
