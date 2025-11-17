@@ -1,21 +1,25 @@
 name: NuGet
 
 on:
+  # запуск вручную из Actions
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to NuGet'
+        description: 'Публиковать на NuGet'
         required: false
         default: 'false'
       version:
-        description: 'Package version (if manual run)'
+        description: 'Версия пакета (если запуск вручную)'
         required: false
         default: ''
+  # публикация по тегу релиза
   push:
     tags:
-      - 'v*'   # v0.1.0
+      - 'v*'        # v0.1.0
+      - '*.*.*'     # 0.1.0
 
 env:
+  # путём до твоего проекта библиотеки
   PROJECT_PATH: Avalonia.DrmKit/Avalonia.DrmKit.csproj
 
 jobs:
@@ -26,19 +30,19 @@ jobs:
         with: { fetch-depth: 0 }
 
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
+        with:
+          dotnet-version: '8.0.x'
 
       - name: Debug refs
         run: |
           echo "event=${{ github.event_name }}"
           echo "ref=${{ github.ref }}"
-          echo "tag-version=${GITHUB_REF#refs/tags/v}"
+          echo "tag=${GITHUB_REF#refs/tags/}"
 
       - name: List tree
         run: |
           pwd
-          ls -la
-          find . -maxdepth 3 -type f -print
+          find . -maxdepth 3 -type f \( -name "*.sln" -o -name "*.csproj" -o -name "README.NuGet.md" \) -print
 
       - name: Restore
         run: dotnet restore
@@ -48,8 +52,10 @@ jobs:
 
       - name: Pack
         run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
+          # Берём версию из тега или из ручного инпута
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
+            RAW="${GITHUB_REF#refs/tags/}"
+            if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
           else
             VERSION="${{ inputs.version }}"
           fi
@@ -60,7 +66,7 @@ jobs:
           echo "Packing version $VERSION"
           dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="$VERSION"
 
-      - name: Show nuspec
+      - name: Show nuspec (ID/Version/Readme)
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
           echo "NUPKG=$FILE"
@@ -75,14 +81,37 @@ jobs:
   publish:
     needs: pack
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
+    # публикуем либо по тегу, либо по ручному запуску с publish=true
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: nupkg
           path: artifacts
 
+      - name: Detect package id/version & check existence on NuGet
+        id: detect
+        shell: bash
+        run: |
+          FILE=$(ls artifacts/*.nupkg | head -n1)
+          ID=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
+          VER=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
+          LID=$(echo "$ID" | tr '[:upper:]' '[:lower:]')
+          URL="https://api.nuget.org/v3-flatcontainer/$LID/$VER/$LID.$VER.nupkg"
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          echo "Package: $ID $VER  -> NuGet HTTP $CODE"
+          echo "id=$ID"   >> "$GITHUB_OUTPUT"
+          echo "ver=$VER"  >> "$GITHUB_OUTPUT"
+          if [ "$CODE" = "200" ]; then echo "exists=true"  >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Skip push (already exists)
+        if: steps.detect.outputs.exists == 'true'
+        run: |
+          echo "ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }} уже существует на NuGet. Обнови версию/tag."
+          exit 0
+
       - name: Push to NuGet.org
+        if: steps.detect.outputs.exists != 'true'
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
