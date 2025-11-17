@@ -1,28 +1,39 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>Avalonia.DrmKit</AssemblyName>
-    <RootNamespace>Avalonia.DrmKit</RootNamespace>
-    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
-    <PackageId>Avalonia.DrmKit.Bezdar</PackageId>
+
+    <!-- NuGet metadata -->
+    <PackageId>Avalonia.DrmKit</PackageId>
     <Authors>bezdar-yakoo</Authors>
-    <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard, soft cursor, smart DRM bootstrap.</Description>
-    <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard (overlay, stylable), soft cursor, smart DRM↔Desktop bootstrap.</Description>
     <PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
+    <PackageReadmeFile>README.NuGet.md</PackageReadmeFile>
+
+    <!-- Документация в пакет (полезно для IDE) -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+
+  <!-- README должен попасть в корень пакета -->
   <ItemGroup>
-    <!-- README должен ЛЕЖАТЬ рядом с этим csproj И попадать в пакет -->
     <None Include="README.NuGet.md" Pack="true" PackagePath="" />
   </ItemGroup>
+
+  <!-- зависимости (по твоему nuspec) -->
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.8" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.8" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
     <PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.8" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
+
 </Project>

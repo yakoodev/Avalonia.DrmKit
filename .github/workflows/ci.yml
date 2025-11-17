@@ -1,12 +1,10 @@
 name: NuGet
 
-# Мьютекс: один запуск на тег/реф. Исключает одновременные пуши.
 concurrency:
   group: nuget-${{ github.ref }}
   cancel-in-progress: true
 
 on:
-  # публикация только по тегам, чтобы не дёргать руками:
   push:
     tags:
       - 'v*'        # v0.1.0
@@ -31,7 +29,7 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
-      - name: Pack (version from tag)
+      - name: Pack (version from tag only)
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
           if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
@@ -42,6 +40,7 @@ jobs:
       - name: Show nuspec (ID/Version)
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
+          echo "NUPKG=$FILE"
           unzip -p "$FILE" *.nuspec | sed -n '1,200p'
 
       - name: Upload nupkg
@@ -64,11 +63,11 @@ jobs:
         shell: bash
         run: |
           FILE=$(ls artifacts/*.nupkg | head -n1)
-          ID=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
-          VER=$(unzip -p "$FILE" *.nuspec | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
+          ID=$(unzip -p "$FILE" *.nups* | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -n1)
+          VER=$(unzip -p "$FILE" *.nups* | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -n1)
+          echo "Package: $ID $VER"
           echo "id=$ID"  >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "Package: $ID $VER"
 
       - name: Push to NuGet.org
         env:
@@ -76,8 +75,6 @@ jobs:
         run: |
           set -e
           echo "Pushing ID=${{ steps.detect.outputs.id }} VER=${{ steps.detect.outputs.ver }}"
-          # Если версия уже занята (в т.ч. валидация/анлист) — nuget вернёт 409.
-          # --skip-duplicate оставляем, чтобы run не «краснел».
           dotnet nuget push "artifacts/*.nupkg" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
