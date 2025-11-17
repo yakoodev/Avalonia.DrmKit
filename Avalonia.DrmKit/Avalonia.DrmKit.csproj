@@ -18,9 +18,10 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
-  <!-- README должен лежать рядом с этим .csproj -->
+  <!-- README лежит РЯДОМ с этим csproj -->
   <ItemGroup>
     <None Include="README.NuGet.md" Pack="true" PackagePath="" />
   </ItemGroup>

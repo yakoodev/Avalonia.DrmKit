@@ -1,5 +1,6 @@
 name: NuGet
 
+# Исключаем параллельные пушки на один и тот же тег
 concurrency:
   group: nuget-${{ github.ref }}
   cancel-in-progress: true
@@ -35,25 +36,25 @@ jobs:
         run: |
           RAW="${GITHUB_REF#refs/tags/}"
           if [[ "$RAW" == v* ]]; then VERSION="${RAW#v}"; else VERSION="$RAW"; fi
-          [[ -z "$VERSION" ]] && { echo "Empty version from tag"; exit 1; }
+          [[ -z "$VERSION" ]] && { echo "ERROR: empty version from tag"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "fallback=${VERSION}-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "Main: $VERSION"
           echo "Fallback: ${VERSION}-ci.${GITHUB_RUN_NUMBER}"
 
+      # Собираем основной пакет
       - name: Pack (main)
-        run: |
-          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
+        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.version }}"
 
-      - name: Pack (fallback, anti-409)
-        run: |
-          dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.fallback }}"
+      # И сразу запасной, на случай 409 (зарезервированная версия)
+      - name: Pack (fallback)
+        run: dotnet pack "$PROJECT_PATH" -c Release -o artifacts --no-build -p:Version="${{ steps.ver.outputs.fallback }}"
 
-      - name: Show nuspecs
+      - name: Show nuspecs (ID/Version)
         run: |
           for f in artifacts/*.nupkg; do
             echo "== $f =="
-            unzip -p "$f" *.nuspec | sed -n '1,60p'
+            unzip -p "$f" *.nuspec | sed -n '1,80p'
           done
 
       - name: Upload nupkg
@@ -75,22 +76,22 @@ jobs:
         id: pick
         shell: bash
         run: |
-          set -e
-          MAIN=$(ls artifacts/*.nupkg | sort | head -n1)
-          # возьмём как main тот, где НЕТ '-ci.'
-          for f in artifacts/*.nupkg; do
-            if [[ "$f" != *"-ci."* ]]; then MAIN="$f"; fi
-          done
+          # main = пакет БЕЗ суффикса -ci., fallback = пакет С суффиксом
+          MAIN=""
           FALL=""
           for f in artifacts/*.nupkg; do
-            if [[ "$f" == *"-ci."* ]]; then FALL="$f"; fi
+            if [[ "$f" == *"-ci."* ]]; then FALL="$f"; else MAIN="$f"; fi
           done
+          [[ -z "$MAIN" ]] && { echo "No main nupkg found"; exit 1; }
+          [[ -z "$FALL" ]] && { echo "No fallback nupkg found"; exit 1; }
           echo "main=$MAIN"     >> "$GITHUB_OUTPUT"
           echo "fallback=$FALL" >> "$GITHUB_OUTPUT"
           echo "MAIN: $MAIN"
           echo "FALLBACK: $FALL"
 
-      - name: Push main to NuGet.org
+      # Пытаемся опубликовать ОСНОВНОЙ — БЕЗ --skip-duplicate,
+      # чтобы 409 дал НЕ нулевой код и мы смогли перейти к fallback.
+      - name: Push MAIN to NuGet.org (no skip-duplicate)
         id: push_main
         continue-on-error: true
         env:
@@ -102,20 +103,24 @@ jobs:
           dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
-            --skip-duplicate
+            --verbosity detailed
 
-      - name: Push fallback to NuGet.org (only if main conflicted)
-        if: steps.push_main.outcome == 'failure'
+      # Если MAIN свалился (в т.ч. из-за 409),
+      # публикуем fallback с --skip-duplicate
+      - name: Push FALLBACK to NuGet.org (on MAIN failure)
+        if: steps.push_main.outcome != 'success'
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -e
           FILE="${{ steps.pick.outputs.fallback }}"
-          if [[ -z "$FILE" ]]; then
-            echo "No fallback file found"; exit 1
-          fi
           echo "Pushing FALLBACK: $FILE"
           dotnet nuget push "$FILE" \
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
-            --skip-duplicate
+            --skip-duplicate --verbosity detailed
+
+      # Печать результата
+      - name: Summary
+        run: |
+          echo "MAIN outcome:  ${{ steps.push_main.outcome }}"
