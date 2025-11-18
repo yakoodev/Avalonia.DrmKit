@@ -1,7 +1,8 @@
-
+﻿
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Avalonia.DrmKit.Sample.App" RequestedThemeVariant="Dark">
+             xmlns:drm="clr-namespace:Avalonia.DrmKit.Input;assembly=Avalonia.DrmKit"
+             x:Class="Avalonia.DrmKit.Sample.App" RequestedThemeVariant="Light">
   <Application.Styles>
     <FluentTheme/>
   </Application.Styles>

@@ -6,7 +6,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,20 +15,34 @@ using System.Threading;
 
 namespace Avalonia.DrmKit.Input
 {
-    public class EvdevMouseListener
+    /// <summary>
+    /// Очень простой evdev-слушатель мыши для DRM/fbdev:
+    ///  - читает события из /dev/input/event*
+    ///  - двигает SoftCursorLayer
+    ///  - генерирует PointerMoved / PointerPressed / PointerReleased / PointerEntered / PointerExited.
+    /// 
+    /// Важно: SoftCursorLayer полностью игнорируется при хит-тесте, чтобы :pointerover
+    /// работал по реальным контролам, а не по overlay.
+    /// </summary>
+    internal sealed class EvdevMouseListener
     {
         private volatile bool _running;
         private readonly List<Thread> _threads = new();
 
-        private double _x, _y;
+        private double _x;
+        private double _y;
         private bool _pressed;
 
-        // Один виртуальный указатель для всей «мыши»
+        // Один логический указатель для всей "мыши".
         private readonly Pointer _pointer =
             new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, isPrimary: true);
 
-        // Элемент, над которым сейчас висит указатель (для PointerEnter/Leave)
+        // Текущий элемент под курсором (leaf в цепочке).
         private IInputElement? _currentOver;
+
+        // Цепочка элементов от parent до leaf (без самого TopLevel / IInputRoot).
+        private List<IInputElement>? _overChain;
+        private static readonly List<IInputElement> s_emptyInputChain = new();
 
         public void Start()
         {
@@ -38,7 +51,7 @@ namespace Avalonia.DrmKit.Input
 
             _running = true;
 
-            // Стартуем примерно из центра первого TopLevel
+            // Стартовая позиция курсора — центр первого TopLevel.
             Dispatcher.UIThread.Post(() =>
             {
                 var tl = LifetimeTopLevel();
@@ -51,12 +64,14 @@ namespace Avalonia.DrmKit.Input
             });
 
             foreach (var dev in Directory.EnumerateFiles("/dev/input")
-                     .Where(p => Path.GetFileName(p).StartsWith("event", StringComparison.Ordinal)))
+                         .Where(p => Path.GetFileName(p).StartsWith("event", StringComparison.Ordinal)))
             {
                 var t = new Thread(() => ReadLoop(dev))
                 {
-                    IsBackground = true
+                    IsBackground = true,
+                    Name = $"DrmKit-EvdevMouse-{Path.GetFileName(dev)}"
                 };
+
                 _threads.Add(t);
                 t.Start();
             }
@@ -65,11 +80,19 @@ namespace Avalonia.DrmKit.Input
         public void Stop()
         {
             _running = false;
+
             foreach (var t in _threads)
             {
-                try { t.Join(200); }
-                catch { }
+                try
+                {
+                    t.Join(200);
+                }
+                catch
+                {
+                    // ignore
+                }
             }
+
             _threads.Clear();
         }
 
@@ -91,49 +114,59 @@ namespace Avalonia.DrmKit.Input
 
                     var e = MemoryMarshal.Read<input_event>(buf);
 
-                    // EV_REL – относительное движение
-                    if (e.type == 2 /* EV_REL */)
+                    switch (e.type)
                     {
-                        if (e.code == 0) // REL_X
-                            _x += e.value;
-                        else if (e.code == 1) // REL_Y
-                            _y += e.value;
+                        case 2: // EV_REL – относительное движение
+                            HandleRelativeEvent(e);
+                            break;
 
-                        ClampAndUpdate();
-                    }
-                    // EV_ABS – сейчас игнорируем (тач/абс. мышь)
-                    else if (e.type == 3 /* EV_ABS */)
-                    {
-                        // по желанию можно добавить поддержку тача
-                    }
-                    // EV_KEY – кнопки мыши
-                    else if (e.type == 1 /* EV_KEY */)
-                    {
-                        if (e.code == 272 /* BTN_LEFT */)
-                        {
-                            if (e.value == 1)
-                            {
-                                _pressed = true;
-                                Dispatcher.UIThread.Post(PressAt);
-                            }
-                            else if (e.value == 0)
-                            {
-                                _pressed = false;
-                                Dispatcher.UIThread.Post(ReleaseAt);
-                            }
-                        }
+                        case 3: // EV_ABS – сейчас не используем (тач / планшеты)
+                            break;
+
+                        case 1: // EV_KEY – кнопки мыши
+                            HandleKeyEvent(e);
+                            break;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[DrmKit][evdev-mouse] {path} error: {ex.Message}");
+                Console.WriteLine($"[DrmKit][evdev-mouse] {path} error: {ex}");
                 Thread.Sleep(200);
             }
         }
 
+        private void HandleRelativeEvent(input_event e)
+        {
+            if (e.code == 0)          // REL_X
+                _x += e.value;
+            else if (e.code == 1)     // REL_Y
+                _y += e.value;
+
+            ClampAndUpdate();
+        }
+
+        private void HandleKeyEvent(input_event e)
+        {
+            // Нас интересует только левая кнопка.
+            if (e.code != 272 /* BTN_LEFT */)
+                return;
+
+            if (e.value == 1)
+            {
+                _pressed = true;
+                Dispatcher.UIThread.Post(PressAt);
+            }
+            else if (e.value == 0)
+            {
+                _pressed = false;
+                Dispatcher.UIThread.Post(ReleaseAt);
+            }
+        }
+
         /// <summary>
-        /// Клэмп координат, обновление soft-курсора и генерация PointerMoved/Enter/Leave.
+        /// Ограничиваем координаты в пределах окна, обновляем soft-курсор
+        /// и дергаем ProcessPointerMove (PointerMoved/Entered/Exited).
         /// </summary>
         private void ClampAndUpdate()
         {
@@ -143,65 +176,53 @@ namespace Avalonia.DrmKit.Input
                 if (tl is null)
                     return;
 
-                _x = Math.Clamp(_x, 0, tl.Bounds.Width - 1);
-                _y = Math.Clamp(_y, 0, tl.Bounds.Height - 1);
+                // Если окно ещё не измерено – просто ничего не делаем.
+                if (tl.Bounds.Width <= 0 || tl.Bounds.Height <= 0)
+                    return;
+
+                _x = Math.Clamp(_x, 0, Math.Max(0, tl.Bounds.Width - 1));
+                _y = Math.Clamp(_y, 0, Math.Max(0, tl.Bounds.Height - 1));
 
                 var p = new Point(_x, _y);
 
-                // двигаем прорисованный курсор
                 SoftCursorHub.UpdatePosition(p);
-
-                // и обновляем PointerOver / PointerMoved / PointerEnter / PointerLeave
                 ProcessPointerMove(tl, p);
             });
         }
-        private List<IInputElement>? _overChain;
-        private static readonly List<IInputElement> s_emptyInputChain = new();
-
-        private static List<IInputElement> BuildInputChain(Visual? hit, IInputRoot root)
-        {
-            if (hit is null)
-                return s_emptyInputChain;
-
-            var chain = new List<IInputElement>();
-
-            var v = hit;
-            while (v != null && v != root)
-            {
-                if (v is IInputElement ie)
-                    chain.Add(ie);
-
-                v = v.GetVisualParent(); // extension из Avalonia.VisualTree
-            }
-
-            // Обычно TopLevel тоже IInputElement, можно его добавить в цепочку
-            if (root is IInputElement rootIe)
-                chain.Add(rootIe);
-
-            // Сейчас chain = [leaf, ..., root], разворачиваем чтобы было root -> leaf
-            chain.Reverse();
-            return chain;
-        }
 
         /// <summary>
-        /// Хит-тест, PointerEnter/Leave и PointerMoved.
+        /// Хит-тест и обработка PointerEntered/Exited/PointerMoved.
         /// </summary>
         private void ProcessPointerMove(TopLevel tl, Point p)
         {
             var root = (IInputRoot)tl;
 
-            // кого реально попали
-            var hitVisual = tl.InputHitTest(p) as Visual;
+            // Сбрасываем возможный pointer capture, чтобы он не ломал :pointerover.
+            if (_pointer.Captured != null)
+            {
+                try
+                {
+                    _pointer.Capture(null);
+                }
+                catch
+                {
+                    // На всякий случай не валим поток, если что-то пошло не так.
+                }
+            }
 
-            // если попали в слой курсора – поднимаемся к родителю
-            if (hitVisual is SoftCursorLayer && hitVisual.Parent is Visual parent)
-                hitVisual = parent;
+            // Хит-тест по реальным контролам. SoftCursorLayer игнорируем:
+            IInputElement? hitElement = null;
 
-            // строим цепочки "root -> ... -> leaf"
-            var newChain = BuildInputChain(hitVisual, root);
+            if (root is InputElement visualRoot)
+            {
+                var hit = visualRoot.InputHitTest(p, v => v is not SoftCursorLayer);
+                hitElement = hit as IInputElement;
+            }
+
+            var newChain = BuildInputChain(hitElement, root);
             var oldChain = _overChain ?? s_emptyInputChain;
 
-            // ищем общую часть в начале (root -> …)
+            // Общий префикс (parent->…->leaf).
             var common = 0;
             while (common < oldChain.Count &&
                    common < newChain.Count &&
@@ -210,7 +231,7 @@ namespace Avalonia.DrmKit.Input
                 common++;
             }
 
-            // --- PointerExited для тех, кто выпал из цепочки ---
+            // --- PointerExited для элементов, которые больше не под курсором.
             for (int i = oldChain.Count - 1; i >= common; i--)
             {
                 if (oldChain[i] is Interactive interactive)
@@ -226,7 +247,7 @@ namespace Avalonia.DrmKit.Input
                 }
             }
 
-            // --- PointerEntered для новых элементов в цепочке ---
+            // --- PointerEntered для новых элементов.
             for (int i = common; i < newChain.Count; i++)
             {
                 if (newChain[i] is Interactive interactive)
@@ -244,16 +265,11 @@ namespace Avalonia.DrmKit.Input
 
             _overChain = newChain;
 
-            // последний в цепочке = реальный leaf под курсором
+            // Последний элемент в цепочке – реальный leaf под курсором.
             var newLeaf = newChain.Count > 0 ? newChain[^1] : null;
-
-            // обновляем PointerOverElement, чтобы всё было консистентно
-            if (!ReferenceEquals(root.PointerOverElement, newLeaf))
-                root.PointerOverElement = newLeaf;
-
             _currentOver = newLeaf;
 
-            // обычный PointerMoved для leaf'а
+            // Обычный PointerMoved для leaf'а.
             if (newLeaf is Interactive target)
             {
                 var moveArgs = CreatePointerEventArgs(
@@ -267,6 +283,29 @@ namespace Avalonia.DrmKit.Input
             }
         }
 
+        /// <summary>
+        /// Собираем цепочку InputElement'ов от ближайшего родителя до leaf (TopLevel/IInputRoot не включаем).
+        /// </summary>
+        private static List<IInputElement> BuildInputChain(IInputElement? hitElement, IInputRoot root)
+        {
+            if (hitElement is null)
+                return s_emptyInputChain;
+
+            var chain = new List<IInputElement>();
+            var v = hitElement as Visual;
+
+            while (v != null && v != root)
+            {
+                if (v is IInputElement ie)
+                    chain.Add(ie);
+
+                v = v.GetVisualParent();
+            }
+
+            // Сейчас chain = [leaf, ..., parent]. Разворачиваем, чтобы было parent->…->leaf.
+            chain.Reverse();
+            return chain;
+        }
 
         private void PressAt()
         {
@@ -278,7 +317,7 @@ namespace Avalonia.DrmKit.Input
 
             var p = new Point(_x, _y);
 
-            // Обновим состояние Over на всякий случай
+            // Актуализируем состояние Over на момент нажатия.
             ProcessPointerMove(tl, p);
 
             var target = (_currentOver as Interactive) ?? (Interactive)tl;
@@ -312,7 +351,7 @@ namespace Avalonia.DrmKit.Input
 
             var p = new Point(_x, _y);
 
-            // снова синхронизируем Over
+            // Актуализируем Over на момент отпускания.
             ProcessPointerMove(tl, p);
 
             var target = (_currentOver as Interactive) ?? (Interactive)tl;
@@ -335,14 +374,26 @@ namespace Avalonia.DrmKit.Input
             };
 
             target.RaiseEvent(args);
+
+            // На всякий случай снимаем возможный capture,
+            // чтобы он не влиял на последующие PointerEntered/Exited.
+            try
+            {
+                if (_pointer.Captured != null)
+                    _pointer.Capture(null);
+            }
+            catch
+            {
+                // ignore
+            }
         }
 
         private PointerEventArgs CreatePointerEventArgs(
-    RoutedEvent routedEvent,
-    Interactive source,
-    TopLevel tl,
-    Point p,
-    PointerUpdateKind kind)
+            RoutedEvent routedEvent,
+            Interactive source,
+            TopLevel tl,
+            Point p,
+            PointerUpdateKind kind)
         {
             var mods = _pressed ? RawInputModifiers.LeftMouseButton : RawInputModifiers.None;
             var props = new PointerPointProperties(mods, kind);
@@ -351,13 +402,12 @@ namespace Avalonia.DrmKit.Input
                 routedEvent,
                 source,
                 _pointer,
-                tl,                    // rootVisual
-                p,                     // позиция в root
+                tl,
+                p,
                 (ulong)Environment.TickCount64,
                 props,
                 KeyModifiers.None);
         }
-
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         private struct input_event
@@ -373,10 +423,14 @@ namespace Avalonia.DrmKit.Input
         {
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime d &&
                 d.Windows.Count > 0)
+            {
                 return d.Windows[0];
+            }
 
             if (Application.Current?.ApplicationLifetime is ISingleViewApplicationLifetime s)
+            {
                 return TopLevel.GetTopLevel(s.MainView);
+            }
 
             return null;
         }
