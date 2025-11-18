@@ -8,7 +8,7 @@
 		<PackageId>DrmKit.Avalonia</PackageId>
 
 		<Authors>bezdar-yakoo</Authors>
-		<Description>DRM/Framebuffer utilities for Avalonia on Linux: evdev keyboard/mouse, on-screen keyboard (overlay, stylable), soft cursor, smart DRM↔Desktop bootstrap.</Description>
+		<Description>added pointerover softcursor event, fix pointerOverEvent for SoftCursor</Description>
 		<PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
