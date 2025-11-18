@@ -25,13 +25,22 @@ namespace Avalonia.DrmKit.Input
         public override void Render(DrawingContext context)
         {
             base.Render(context);
+
             var radius = _size / 2;
             var rect = new Rect(_pos.X - radius, _pos.Y - radius, _size, _size);
             var geometry = new EllipseGeometry(rect);
 
-            var stroke = new Pen(Brushes.White, _stroke);
-            var fill = _pressed ? new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)) : null;
+            // Чёрная обводка + белая/серая заливка — хорошо видно и на тёмной, и на светлой теме
+            var stroke = new Pen(Brushes.Black, _stroke);
+
+            var fillColor = _pressed
+                ? Color.FromArgb(200, 200, 200, 200)   // чуть темнее при нажатии
+                : Color.FromArgb(230, 255, 255, 255);  // почти белый круг
+
+            var fill = new SolidColorBrush(fillColor);
+
             context.DrawGeometry(fill, stroke, geometry);
         }
+
     }
 }

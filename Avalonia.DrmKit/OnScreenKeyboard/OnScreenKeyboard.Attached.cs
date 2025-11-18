@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 
 namespace Avalonia.DrmKit.OnScreenKeyboard
 {
@@ -32,14 +33,33 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             {
                 PlacementTarget = tb,
                 PlacementMode = PlacementMode.Bottom,
-                //StaysOpen = true,
                 IsLightDismissEnabled = false,
                 Topmost = true
             };
+
             var keyboard = new OnScreenKeyboard();
             keyboard.Attach(tb);
             popup.Child = keyboard;
+
+            // Enter/Cancel на экранной клавиатуре закрывают popup
+            keyboard.CloseRequested += (_, __) => popup.IsOpen = false;
+
+            // Открываем по фокусу
             tb.AddHandler(InputElement.GotFocusEvent, (_, __) => popup.IsOpen = true);
+
+            // Закрываем popup по Escape на физической клавиатуре
+            tb.AddHandler(
+                InputElement.KeyDownEvent,
+                (sender, e) =>
+                {
+                    if (e.Key == Key.Escape && popup.IsOpen)
+                    {
+                        popup.IsOpen = false;
+                        e.Handled = true;
+                    }
+                },
+                RoutingStrategies.Tunnel);
         }
+
     }
 }

@@ -90,8 +90,20 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             hostPanel.Children.Add(panel);
             hostPanel.Resources[OverlayKey] = panel;
             panel.Tag = keyboard;
+            keyboard.CloseRequested += (_, __) => panel.IsVisible = false;
 
             tl.AddHandler(InputElement.LostFocusEvent, (_, __) => MaybeHideIfNoFocusedTextBox(tl, panel), RoutingStrategies.Tunnel);
+            tl.AddHandler(
+                        InputElement.KeyDownEvent,
+                        (sender, e) =>
+                        {
+                            if (e.Key == Key.Escape && panel.IsVisible)
+                            {
+                                panel.IsVisible = false;
+                                e.Handled = true;
+                            }
+                        },
+                        RoutingStrategies.Tunnel);
 
             Console.WriteLine("[DrmKit] KeyboardOverlay: panel created");
             return panel;

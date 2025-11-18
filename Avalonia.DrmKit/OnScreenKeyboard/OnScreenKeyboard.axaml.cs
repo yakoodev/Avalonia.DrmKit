@@ -17,6 +17,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         private bool _caps;
         private TextBox? _target;
         private string _originalText = string.Empty;
+        public event EventHandler? CloseRequested;
 
 
 
@@ -119,30 +120,15 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     return;
 
                 case "enter":
-                    _target.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Enter });
-                    var tl = TopLevel.GetTopLevel(this);
-                    tl?.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault)
-                      ?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    _target.Focus();
+                    // Просто закрываем ОСК и снимаем фокус, текст не меняем
+                    CloseAndClearFocus(restoreOriginalText: false);
                     return;
 
                 case "cancel":
-                    _target!.Text = _originalText;
-                    _target.SelectionStart = _target.SelectionEnd = _target.Text?.Length ?? 0;
-
-                    // Скрываем оверлей
-                    HideOverlay();
-
-                    // Чётко снимаем фокус со всего
-                    var tl2 = TopLevel.GetTopLevel(this);
-                    tl2?.FocusManager?.ClearFocus();
-
-                    // На всякий случай "пинок" контролу, чтобы последующий tap точно дал GotFocus
-                    var tb = _target;
-                    _target = null;
-                    tb.IsEnabled = false;
-                    Dispatcher.UIThread.Post(() => tb.IsEnabled = true);
+                    // Откатываем исходный текст, закрываем ОСК и снимаем фокус
+                    CloseAndClearFocus(restoreOriginalText: true);
                     return;
+
 
                 case "eng":
                     KeyboardLayoutManager.SetCurrent("en");
@@ -173,7 +159,22 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 _target.Text = t;
                 _target.SelectionStart = _target.SelectionEnd = start + txt.Length;
             }
+            void CloseAndClearFocus(bool restoreOriginalText)
+            {
+                if (_target is { } tb)
+                {
+                    if (restoreOriginalText)
+                    {
+                        tb.Text = _originalText;
+                        tb.SelectionStart = tb.SelectionEnd = tb.Text?.Length ?? 0;
+                    }
 
+                    var tl = TopLevel.GetTopLevel(tb);
+                    tl?.FocusManager?.ClearFocus();
+                }
+
+                HideOverlay();
+            }
             void Backspace()
             {
                 var content = _target!.Text ?? string.Empty;
@@ -210,12 +211,20 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
             void HideOverlay()
             {
-                // Найдём нашу оверлей-панель (Border), в которой живёт клавиатура, и спрячем её
-                var panel = this.GetVisualAncestors().OfType<Border>().FirstOrDefault(b => ReferenceEquals(b.Tag, this));
-                if (panel is null)
-                    panel = this.GetVisualAncestors().OfType<Border>().FirstOrDefault(); // запасной вариант
-                if (panel is not null) panel.IsVisible = false;
+                // Сначала уведомляем хост (Overlay/Popup), что клавиатуру нужно закрыть
+                CloseRequested?.Invoke(this, EventArgs.Empty);
+
+                // Обратная совместимость: если хост — Border-оверлей (KeyboardOverlay),
+                // спрячем панель напрямую.
+                var panel = this.GetVisualAncestors()
+                                .OfType<Border>()
+                                .FirstOrDefault(b => ReferenceEquals(b.Tag, this))
+                         ?? this.GetVisualAncestors().OfType<Border>().FirstOrDefault();
+
+                if (panel is not null)
+                    panel.IsVisible = false;
             }
+
         }
     }
 }

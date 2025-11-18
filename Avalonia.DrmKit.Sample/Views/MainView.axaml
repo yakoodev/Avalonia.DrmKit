@@ -6,5 +6,7 @@
   <StackPanel Margin="12" Spacing="8">
     <TextBlock Text="SingleView режим"/>
     <TextBox osk:KeyboardOverlay.IsEnabled="True" Watermark="Тут тоже работает"/>
+    <Button Click="Button_Click" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">Tests</Button>
+    <Button x:Name="btn2"  VerticalAlignment="Stretch" HorizontalAlignment="Stretch">btn2</Button>
   </StackPanel>
 </UserControl>
