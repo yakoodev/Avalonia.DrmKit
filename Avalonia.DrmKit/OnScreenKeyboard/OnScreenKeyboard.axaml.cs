@@ -66,9 +66,21 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             // Любое касание по клавиатуре — держим фокус в TextBox
             _target?.Focus();
         }
+        private static bool IsLetterKey(string key)
+        {
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            // Одиночный Unicode-символ-буква (английский, русский и т.п.)
+            return key.Length == 1 && char.IsLetter(key[0]);
+        }
         private Button CreateKeyButton(string text)
         {
-            var label = _caps ? text.ToUpperInvariant() : text;
+            // Caps влияет только на "одиночные буквы" (en/ru и т.п.)
+            var label = IsLetterKey(text) && _caps
+                ? text.ToUpperInvariant()
+                : text;
+
             var btn = new Button
             {
                 Content = label,
@@ -78,9 +90,45 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
+
+            // Базовый класс для всех клавиш ОСК
+            btn.Classes.Add("osk-button");
+
+            var lower = text.ToLowerInvariant();
+
+            switch (lower)
+            {
+                // Переключатели раскладки
+                case "eng":
+                case "rus":
+                    btn.Classes.Add("primary");
+                    break;
+
+                // Служебные клавиши
+                case "<-":     // Backspace
+                case "del":
+                case "enter":
+                case "cancel":
+                    btn.Classes.Add("primary");
+                    break;
+
+                case "space":
+                    btn.Classes.Add("wide");
+                    break;
+
+                case "caps":
+                    btn.Classes.Add("wide");
+                    if (_caps)
+                        btn.Classes.Add("active"); // подсветка активного CAPS
+                    break;
+            }
+
             btn.Click += (_, __) => HandleKey(text);
             return btn;
         }
+
+
+
 
         private void HandleKey(string key)
         {

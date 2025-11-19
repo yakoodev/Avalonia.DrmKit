@@ -1,8 +1,10 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 
 namespace Avalonia.DrmKit.Input
 {
@@ -15,7 +17,8 @@ namespace Avalonia.DrmKit.Input
     /// - биндинги к позиции курсора: CursorX / CursorY;
     /// - биндинг к состоянию кнопки: IsPressed;
     /// - смена цветов через стили (StrokeBrush / FillBrush / PressedFillBrush);
-    /// - дефолтные цвета автоматически подстраиваются под светлую/тёмную тему.
+    /// - дефолтные цвета автоматически подстраиваются под светлую/тёмную тему;
+    /// - авто-скрытие курсора по таймауту с плавным исчезновением (AutoHideDelay).
     /// </summary>
     public class SoftCursorLayer : ContentControl
     {
@@ -25,6 +28,12 @@ namespace Avalonia.DrmKit.Input
         private double _cursorX;
         private double _cursorY;
         private bool _isPressed;
+        private bool _isCursorVisible;
+
+        private DispatcherTimer? _idleTimer;
+        private DispatcherTimer? _fadeTimer;
+        private DateTimeOffset _fadeStart;
+        private static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(250);
 
         // Позиция курсора — для биндингов в шаблоне
         public static readonly DirectProperty<SoftCursorLayer, double> CursorXProperty =
@@ -41,6 +50,26 @@ namespace Avalonia.DrmKit.Input
             AvaloniaProperty.RegisterDirect<SoftCursorLayer, bool>(
                 nameof(IsPressed),
                 o => o.IsPressed);
+
+        /// <summary>
+        /// Текущая логическая видимость курсора.
+        /// true — курсор считается видимым (даже если он находится в фазе "затухания"),
+        /// false — полностью скрыт.
+        /// </summary>
+        public static readonly DirectProperty<SoftCursorLayer, bool> IsCursorVisibleProperty =
+            AvaloniaProperty.RegisterDirect<SoftCursorLayer, bool>(
+                nameof(IsCursorVisible),
+                o => o.IsCursorVisible);
+
+        /// <summary>
+        /// Таймаут простоя, после которого курсор будет автоматически скрыт.
+        /// 0 или отрицательное значение — авто-скрытие отключено.
+        /// Значение по умолчанию: 3 секунды.
+        /// </summary>
+        public static readonly StyledProperty<TimeSpan> AutoHideDelayProperty =
+            AvaloniaProperty.Register<SoftCursorLayer, TimeSpan>(
+                nameof(AutoHideDelay),
+                defaultValue: TimeSpan.FromSeconds(3));
 
         /// <summary>
         /// Если true — дефолтный кружок не рисуется вообще.
@@ -71,6 +100,18 @@ namespace Avalonia.DrmKit.Input
         {
             get => _isPressed;
             private set => SetAndRaise(IsPressedProperty, ref _isPressed, value);
+        }
+
+        public bool IsCursorVisible
+        {
+            get => _isCursorVisible;
+            private set => SetAndRaise(IsCursorVisibleProperty, ref _isCursorVisible, value);
+        }
+
+        public TimeSpan AutoHideDelay
+        {
+            get => GetValue(AutoHideDelayProperty);
+            set => SetValue(AutoHideDelayProperty, value);
         }
 
         // --- Стилизуемые кисти для дефолтного кружка ---
@@ -124,15 +165,20 @@ namespace Avalonia.DrmKit.Input
 
             IsHitTestVisible = false;
             Focusable = false;
+
+            // Изначально курсор скрыт, пока пользователь не "шевельнёт" мышь.
+            IsCursorVisible = false;
+            Opacity = 0.0;
         }
 
         /// <summary>
-        /// Обновление позиции курсора (вызывается из EvdevMouseListener).
+        /// Обновление позиции курсора (вызывается из EvdevMouseListener и PointerMoved TopLevel'а).
         /// </summary>
         public void UpdatePosition(Point p)
         {
             CursorX = p.X;
             CursorY = p.Y;
+            NotifyActivity();
             InvalidateVisual();
         }
 
@@ -142,7 +188,88 @@ namespace Avalonia.DrmKit.Input
         public void SetPressed(bool pressed)
         {
             IsPressed = pressed;
+            NotifyActivity();
             InvalidateVisual();
+        }
+
+        /// <summary>
+        /// Любая активность (движение/клик) — показать курсор и перезапустить таймер простоя.
+        /// </summary>
+        private void NotifyActivity()
+        {
+            // Показать курсор немедленно
+            if (!IsCursorVisible || Opacity < 1.0)
+            {
+                IsCursorVisible = true;
+                Opacity = 1.0;
+            }
+
+            // Остановить текущий fade, если он был
+            _fadeTimer?.Stop();
+
+            var delay = AutoHideDelay;
+            if (delay <= TimeSpan.Zero)
+            {
+                _idleTimer?.Stop();
+                return;
+            }
+
+            if (_idleTimer is null)
+            {
+                _idleTimer = new DispatcherTimer();
+                _idleTimer.Tick += IdleTimer_Tick;
+            }
+
+            _idleTimer.Interval = delay;
+            _idleTimer.Stop();
+            _idleTimer.Start();
+        }
+
+        private void IdleTimer_Tick(object? sender, EventArgs e)
+        {
+            _idleTimer?.Stop();
+
+            if (AutoHideDelay <= TimeSpan.Zero || !IsCursorVisible)
+                return;
+
+            StartFadeOut();
+        }
+
+        private void StartFadeOut()
+        {
+            _fadeStart = DateTimeOffset.Now;
+
+            if (_fadeTimer is null)
+            {
+                _fadeTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(16) // ~60 FPS
+                };
+                _fadeTimer.Tick += FadeTimer_Tick;
+            }
+
+            _fadeTimer.Stop();
+            _fadeTimer.Start();
+        }
+
+        private void FadeTimer_Tick(object? sender, EventArgs e)
+        {
+            var elapsed = DateTimeOffset.Now - _fadeStart;
+            var t = elapsed.TotalMilliseconds / FadeDuration.TotalMilliseconds;
+
+            if (t >= 1.0)
+            {
+                _fadeTimer?.Stop();
+                Opacity = 0.0;
+                IsCursorVisible = false;
+                return;
+            }
+
+            var newOpacity = 1.0 - t;
+            if (newOpacity < 0.0)
+                newOpacity = 0.0;
+
+            Opacity = newOpacity;
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -163,6 +290,23 @@ namespace Avalonia.DrmKit.Input
                 change.Property == PressedFillBrushProperty)
             {
                 InvalidateVisual();
+            }
+
+            if (change.Property == AutoHideDelayProperty)
+            {
+                // При выключении авто-скрытия просто останавливаем таймеры.
+                if (AutoHideDelay <= TimeSpan.Zero)
+                {
+                    _idleTimer?.Stop();
+                    _fadeTimer?.Stop();
+                    // Курсор будет управляться только активностью.
+                }
+                else
+                {
+                    // Если курсор уже видим — перезапустим ожидание.
+                    if (IsCursorVisible)
+                        NotifyActivity();
+                }
             }
         }
 

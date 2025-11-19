@@ -1,4 +1,3 @@
-
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -33,9 +32,30 @@ namespace Avalonia.DrmKit
             Input.SoftCursorHub.Register(tl, overlay);
             Console.WriteLine("[DrmKit] SoftCursorInstaller: overlay added");
 
-            tl.PointerMoved += (_, e) => overlay.UpdatePosition(e.GetPosition(tl));
-            tl.PointerPressed += (_, e) => overlay.SetPressed(true);
-            tl.PointerReleased += (_, e) => overlay.SetPressed(false);
+            tl.PointerMoved += (_, e) =>
+            {
+                // Для LibInput: реагируем только на мышь, тач-скрин игнорируем
+                if (e.Pointer.Type != PointerType.Mouse)
+                    return;
+
+                overlay.UpdatePosition(e.GetPosition(tl));
+            };
+
+            tl.PointerPressed += (_, e) =>
+            {
+                if (e.Pointer.Type != PointerType.Mouse)
+                    return;
+
+                overlay.SetPressed(true);
+            };
+
+            tl.PointerReleased += (_, e) =>
+            {
+                if (e.Pointer.Type != PointerType.Mouse)
+                    return;
+
+                overlay.SetPressed(false);
+            };
         }
     }
 }

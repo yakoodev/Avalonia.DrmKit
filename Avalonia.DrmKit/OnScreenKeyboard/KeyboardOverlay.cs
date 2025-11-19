@@ -73,10 +73,8 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             var keyboard = new OnScreenKeyboard();
             var panel = new Border
             {
-                Background = new SolidColorBrush(Colors.Black) { Opacity = 0.65 },
-                BorderBrush = Brushes.White,
+                
                 BorderThickness = new Thickness(1),
-                Padding = new Thickness(6),
                 CornerRadius = new CornerRadius(6),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Bottom,
