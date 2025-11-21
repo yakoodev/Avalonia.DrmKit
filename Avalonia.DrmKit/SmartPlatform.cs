@@ -1,6 +1,6 @@
-
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.LinuxFramebuffer;
+using Avalonia.LinuxFramebuffer.Input;
 using Avalonia.LinuxFramebuffer.Input.LibInput;
 using Avalonia.ReactiveUI;
 using System;
@@ -15,12 +15,20 @@ namespace Avalonia.DrmKit
     {
         [DllImport("libc")] private static extern uint geteuid();
 
-        public static int Start(AppBuilder builder, string[] args)
+        /// <summary>
+        /// Умный старт приложения:
+        ///  - на Windows/macOS/Linux Desktop → обычный Desktop lifetime
+        ///  - на Linux без X11/Wayland → DRM
+        /// Теперь можно прокинуть настройки и свой IInputBackend.
+        /// </summary>
+        public static int Start(AppBuilder builder, string[] args, SmartPlatformOptions? options = null)
         {
-            var system = DetectSystemType(args);
+            options ??= new SmartPlatformOptions();
+
+            var system = options.SystemTypeOverride ?? DetectSystemType(args);
             Console.WriteLine($"[DrmKit] SystemType={system}");
 
-            // XDG_RUNTIME_DIR for libinput when launched via sudo/tty
+            // XDG_RUNTIME_DIR для libinput при запуске через sudo/tty
             var xdg = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
             var sudoUid = Environment.GetEnvironmentVariable("SUDO_UID");
             if (string.IsNullOrEmpty(xdg) && OperatingSystem.IsLinux())
@@ -33,7 +41,10 @@ namespace Avalonia.DrmKit
                         Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", sudoPath);
                         Console.WriteLine($"[DrmKit] XDG_RUNTIME_DIR set to {sudoPath} (sudo).");
                     }
-                    else Console.WriteLine($"[DrmKit] {sudoPath} not found; libinput may fail to init seat.");
+                    else
+                    {
+                        Console.WriteLine($"[DrmKit] {sudoPath} not found; libinput may fail to init seat.");
+                    }
                 }
                 else if (geteuid() == 0)
                 {
@@ -43,25 +54,40 @@ namespace Avalonia.DrmKit
                         Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", rootPath);
                         Console.WriteLine("[DrmKit] XDG_RUNTIME_DIR set to /run/user/0 (root).");
                     }
-                    else Console.WriteLine("[DrmKit] /run/user/0 not found; libinput may fail to init seat.");
+                    else
+                    {
+                        Console.WriteLine("[DrmKit] /run/user/0 not found; libinput may fail to init seat.");
+                    }
                 }
             }
 
+            // Всё, что не Linux DRM — обычный Desktop
             if (!system.IsLinux() || system.IsDesktopSystem())
                 return builder.StartWithClassicDesktopLifetime(args);
 
+            // --- выбор карты DRM и VideoMode ---
+
             var drmToken = GetAnyToken(args, new[] { "--drm", "-card" });
-            var resolution = ParseResolutionAny(args, new[] { "--resolution", "-resolution" }, new PixelSize(1280, 720));
+
+            var defaultResolution = options.DefaultResolution;
+            var resolutionFromArgs = ParseResolutionAny(args, new[] { "--resolution", "-resolution" }, defaultResolution);
+            var resolution = options.Resolution ?? resolutionFromArgs;
 
             var cards = EnumerateDrmCards().ToList();
             Console.WriteLine($"[DrmKit] Found DRM cards: {string.Join(", ", cards)}");
+
             if (cards.Count == 0)
             {
-                Console.Error.WriteLine("[DrmKit] /dev/dri/card* was not found. Falling back to Desktop.");
+                Console.Error.WriteLine("[DrmKit] /dev/dri/card* was not found.");
+
+                if (!options.AllowDesktopFallback)
+                    return -1;
+
+                Console.Error.WriteLine("[DrmKit] Falling back to Desktop.");
                 return FreshDesktop().StartWithClassicDesktopLifetime(args);
             }
 
-            var requestedCard = ParseDrmArgValue(drmToken);
+            var requestedCard = options.DrmCard ?? ParseDrmArgValue(drmToken);
             string chosenCard;
             if (!string.IsNullOrEmpty(requestedCard))
             {
@@ -72,31 +98,54 @@ namespace Avalonia.DrmKit
             {
                 chosenCard = cards[0];
             }
+
             Console.WriteLine($"[DrmKit] Selected card: {chosenCard}");
 
             var drmOpt = new DrmOutputOptions
             {
-                Scaling = 1,
+                Scaling = options.Scaling ?? 1.0,
                 EnableInitialBufferSwapping = true,
                 VideoMode = resolution
             };
-            var libInputOpt = new LibInputBackendOptions { };
+
+            // Пользователь может донастроить любые поля DrmOutputOptions
+            options.ConfigureDrm?.Invoke(drmOpt);
+
+            // --- ввод: IInputBackend ---
+
+            var inputBackend =
+                options.InputBackend ??
+                options.InputBackendFactory?.Invoke() ??
+                new LibInputBackend(options.LibInputOptions ?? new LibInputBackendOptions());
+
+            var connectorsForceProbe = options.ConnectorsForceProbe ?? true;
 
             try
             {
                 return builder.StartLinuxDrm(
                     args,
                     chosenCard,
-                    true,
+                    connectorsForceProbe,
                     drmOpt,
-                    new LibInputBackend(libInputOpt));
+                    inputBackend);
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[DrmKit] DRM start error on {chosenCard}: {ex}");
+
+                if (!options.AllowDesktopFallback)
+                    return -1;
+
                 Console.Error.WriteLine("[DrmKit] Falling back to Desktop.");
-                try { return FreshDesktop().StartWithClassicDesktopLifetime(args); }
-                catch (Exception ex2) { Console.Error.WriteLine($"[DrmKit] Desktop fallback failed: {ex2}"); return -1; }
+                try
+                {
+                    return FreshDesktop().StartWithClassicDesktopLifetime(args);
+                }
+                catch (Exception ex2)
+                {
+                    Console.Error.WriteLine($"[DrmKit] Desktop fallback failed: {ex2}");
+                    return -1;
+                }
             }
         }
 
@@ -107,10 +156,13 @@ namespace Avalonia.DrmKit
                 .UseReactiveUI();
 
         public enum SystemType { DRM, Windows, LinuxDesktop, Android, MacOS }
+
         public static bool IsDesktopSystem(this SystemType type)
             => type == SystemType.Windows || type == SystemType.LinuxDesktop || type == SystemType.MacOS;
+
         public static bool IsLinux(this SystemType type)
             => type == SystemType.LinuxDesktop || type == SystemType.DRM;
+
         public static bool IsDrm(this SystemType type)
             => type == SystemType.DRM;
 
@@ -125,7 +177,8 @@ namespace Avalonia.DrmKit
             }
 
             var requested = ParseRequestedSystemType(args);
-            if (requested is SystemType.LinuxDesktop or SystemType.DRM) return requested.Value;
+            if (requested is SystemType.LinuxDesktop or SystemType.DRM)
+                return requested.Value;
 
             return IsDesktopSession() ? SystemType.LinuxDesktop : SystemType.DRM;
         }
@@ -227,5 +280,75 @@ namespace Avalonia.DrmKit
                 return $"/dev/dri/card{idx}";
             return value;
         }
+    }
+
+    /// <summary>
+    /// Опции умного старта DRM/Framebuffer + ввода через IInputBackend.
+    /// </summary>
+    public sealed class SmartPlatformOptions
+    {
+        /// <summary>
+        /// Принудительный выбор типа системы.
+        /// Если null — используется SmartPlatform.DetectSystemType(args).
+        /// </summary>
+        public SmartPlatform.SystemType? SystemTypeOverride { get; set; }
+
+        /// <summary>
+        /// Карта DRM: "/dev/dri/card1", "card1" или "1".
+        /// Если null — берётся из аргумента --drm/-card или первый найденный.
+        /// </summary>
+        public string? DrmCard { get; set; }
+
+        /// <summary>
+        /// Желаемое разрешение (VideoMode).
+        /// Если null — читается из аргументов (--resolution=WxH) или DefaultResolution.
+        /// </summary>
+        public PixelSize? Resolution { get; set; }
+
+        /// <summary>
+        /// Разрешение по умолчанию, когда нет Resolution и --resolution.
+        /// </summary>
+        public PixelSize DefaultResolution { get; set; } = new PixelSize(1280, 720);
+
+        /// <summary>
+        /// Масштаб для DrmOutputOptions.Scaling.
+        /// Если null — 1.0.
+        /// </summary>
+        public double? Scaling { get; set; }
+
+        /// <summary>
+        /// Параметр connectorsForceProbe для StartLinuxDrm.
+        /// Если null — true.
+        /// </summary>
+        public bool? ConnectorsForceProbe { get; set; }
+
+        /// <summary>
+        /// Дополнительная настройка DrmOutputOptions перед запуском.
+        /// </summary>
+        public Action<DrmOutputOptions>? ConfigureDrm { get; set; }
+
+        /// <summary>
+        /// Конкретный IInputBackend для LinuxFramebuffer.
+        /// Если не задан — используется InputBackendFactory или LibInputBackend.
+        /// </summary>
+        public IInputBackend? InputBackend { get; set; }
+
+        /// <summary>
+        /// Фабрика для создания IInputBackend, если InputBackend не задан.
+        /// Удобно, если backend зависит от DI-контейнера.
+        /// </summary>
+        public Func<IInputBackend>? InputBackendFactory { get; set; }
+
+        /// <summary>
+        /// Опции для LibInputBackend по умолчанию.
+        /// Игнорируются, если задан кастомный InputBackend или InputBackendFactory.
+        /// </summary>
+        public LibInputBackendOptions? LibInputOptions { get; set; }
+
+        /// <summary>
+        /// Если true (по умолчанию) — при ошибке DRM будет попытка уйти на Desktop.
+        /// Если false — при ошибке возвращается -1 без fallback.
+        /// </summary>
+        public bool AllowDesktopFallback { get; set; } = true;
     }
 }

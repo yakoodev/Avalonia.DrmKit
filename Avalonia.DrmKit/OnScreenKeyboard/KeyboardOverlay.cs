@@ -83,8 +83,6 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 Focusable = false,           // фокус не забираем
                 IsHitTestVisible = true,     // ← клики по детям (кнопкам) проходят
             };
-            //Panel.SetZIndex(panel, 9000);
-
             hostPanel.Children.Add(panel);
             hostPanel.Resources[OverlayKey] = panel;
             panel.Tag = keyboard;

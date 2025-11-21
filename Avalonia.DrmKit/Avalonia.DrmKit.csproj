@@ -8,8 +8,17 @@
 		<PackageId>DrmKit.Avalonia</PackageId>
 
 		<Authors>bezdar-yakoo</Authors>
-		<Description>added pointerover softcursor event, fix pointerOverEvent for SoftCursor</Description>
-		<PackageTags>avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk</PackageTags>
+
+		<Description>
+			Utilities for running Avalonia apps on Linux DRM/Framebuffer:
+			evdev keyboard (EN/RU, Alt+Shift, CapsLock), on-screen keyboard,
+			soft cursor with auto-hide and pointerover fix, evdev mouse fallback.
+		</Description>
+
+		<PackageTags>
+			avalonia;drm;linux;framebuffer;evdev;input;onscreen keyboard;soft cursor;kiosk
+		</PackageTags>
+
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<RepositoryUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</RepositoryUrl>
 		<PackageProjectUrl>https://github.com/bezdar-yakoo/Avalonia.DrmKit</PackageProjectUrl>
@@ -21,9 +30,17 @@
 		<IsPackable>true</IsPackable>
 
 		<PackageIcon>icon.png</PackageIcon>
-  		<PackageReleaseNotes>Первый публичный релиз: DRM/FB ввод, экранная клавиатура, софт-курсор. Обновление иконки</PackageReleaseNotes>
+		<PackageReleaseNotes>
+			update styles
+			update docs
+			remove touchscreen for softcursor
+		</PackageReleaseNotes>
 	</PropertyGroup>
 
+	<PropertyGroup>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<AvaloniaAccessUnstablePrivateApis>true</AvaloniaAccessUnstablePrivateApis>
+	</PropertyGroup>
 	<!-- README лежит рядом с этим .csproj -->
 	<ItemGroup>
 		<None Include="README.NuGet.md" Pack="true" PackagePath="" />
@@ -31,10 +48,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia" Version="11.3.8" />
-		<PackageReference Include="Avalonia.Desktop" Version="11.3.8" />
-		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
-		<PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.8" />
+		<PackageReference Include="Avalonia" Version="11.3.9" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.9" />
+		<PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.9" />
 		<PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 	</ItemGroup>
