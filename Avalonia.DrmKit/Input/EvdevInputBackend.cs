@@ -31,6 +31,9 @@ namespace Avalonia.DrmKit.Input
 
         private double _cursorX;
         private double _cursorY;
+        private int _absX;
+        private int _absY;
+        private bool _absXInitialized;
         private readonly object _sync = new();
 
         private readonly List<Thread> _deviceThreads = new();
@@ -53,9 +56,13 @@ namespace Avalonia.DrmKit.Input
         private const ushort EV_SYN = 0x00;
         private const ushort EV_KEY = 0x01;
         private const ushort EV_REL = 0x02;
+        private const ushort EV_ABS = 0x03;
 
         private const ushort REL_X = 0x00;
         private const ushort REL_Y = 0x01;
+
+        private const ushort ABS_X = 0x00;
+        private const ushort ABS_Y = 0x01;
 
         private const ushort BTN_LEFT = 0x110;
         private const ushort BTN_RIGHT = 0x111;
@@ -175,6 +182,10 @@ namespace Avalonia.DrmKit.Input
                     HandleRelativeEvent(ev, root, handler);
                     break;
 
+                case EV_ABS:
+                    HandleAbsoluteEvent(ev, root, handler);
+                    break;
+
                 case EV_KEY:
                     HandleKeyEvent(ev, root, handler);
                     break;
@@ -208,6 +219,70 @@ namespace Avalonia.DrmKit.Input
                 var modifiers = GetCurrentModifiers();
 
                 // ⚠ если сигнатура отличается в твоей версии Avalonia — поправь конструктор.
+                var args = new RawPointerEventArgs(
+                    _mouse,
+                    ToTimestamp(ev.time),
+                    root,
+                    RawPointerEventType.Move,
+                    position,
+                    modifiers);
+
+                Post(handler, args);
+            }
+        }
+
+        private void HandleAbsoluteEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
+        {
+            // Устройства вроде тачпадов и тач-скринов часто отправляют ABS_X/ABS_Y вместо REL_X/REL_Y.
+            // Храним последние значения и двигаем курсор относительно них, чтобы не зависеть от
+            // абсолютного диапазона устройства (который может быть > размера экрана).
+            lock (_sync)
+            {
+                bool updated = false;
+
+                if (ev.code == ABS_X)
+                {
+                    var last = _absX;
+                    _absX = ev.value;
+
+                    if (_absXInitialized)
+                    {
+                        _cursorX += _absX - last;
+                        updated = true;
+                    }
+                }
+                else if (ev.code == ABS_Y)
+                {
+                    var last = _absY;
+                    _absY = ev.value;
+
+                    if (_absXInitialized)
+                    {
+                        _cursorY += _absY - last;
+                        updated = true;
+                    }
+                }
+                else
+                {
+                    return;
+                }
+
+                _absXInitialized |= ev.code is ABS_X or ABS_Y;
+
+                if (!updated)
+                    return;
+
+                var size = _screen?.ScaledSize ?? default;
+
+                if (size.Width > 0 && size.Height > 0)
+                {
+                    _cursorX = Math.Clamp(_cursorX, 0, size.Width - 1);
+                    _cursorY = Math.Clamp(_cursorY, 0, size.Height - 1);
+                }
+
+                var position = new Point(_cursorX, _cursorY);
+                var modifiers = GetCurrentModifiers();
+
                 var args = new RawPointerEventArgs(
                     _mouse,
                     ToTimestamp(ev.time),

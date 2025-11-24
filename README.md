@@ -75,6 +75,40 @@ dotnet add package DrmKit.Avalonia
 - пользователь в группах `video` и `input`;
 - .NET 8, Avalonia 11 (рекомендуется).
 
+### Как подключить к своему проекту
+
+1. Добавьте пакет:
+
+   ```bash
+   dotnet add package DrmKit.Avalonia
+   ```
+
+2. В `Program.cs`/`Main` используйте `SmartPlatform` и эвдев‑бэкенды:
+
+   ```csharp
+   return SmartPlatform.Start(AppBuilder.Configure<App>()
+       .UsePlatformDetect()
+       .UseDrmSoftCursor()
+       .UseLinuxKeyboardListener() // клавиатура через evdev
+       .UseEvdevMouseFallback(),    // мышь/тачпад/touchscreen через evdev
+       args);
+   ```
+
+3. Соберите и запустите приложение, задав DRM‑карту и разрешение (по желанию):
+
+   ```bash
+   ./YourApp --system=drm --drm=card0 --resolution=1920x1080
+   ```
+
+4. Убедитесь, что пользователь находится в группах `video` и `input`, иначе чтение
+   `/dev/input/event*` и `/dev/dri/card*` будет недоступно.
+
+Использование из исходников (без NuGet):
+
+- Клонируйте репозиторий и добавьте ссылку на проект `Avalonia.DrmKit` в своём
+  `.csproj` (`<ProjectReference Include="../Avalonia.DrmKit/Avalonia.DrmKit.csproj" />`).
+- Подключите неймспейс `Avalonia.DrmKit` и вызовы, как показано выше.
+
 ### Быстрый старт
 
 **Program.cs**:
@@ -86,7 +120,14 @@ using Avalonia.DrmKit;
 internal static class Program
 {
     public static int Main(string[] args)
-        => SmartPlatform.Start(BuildAvaloniaApp(), args); // авто-определение платформы
+    {
+        var options = new SmartPlatformOptions
+        {
+            InputBackend = new Avalonia.DrmKit.Input.EvdevInputBackend(),
+        };
+
+        return SmartPlatform.Start(BuildAvaloniaApp(), args, options); // авто-определение платформы
+    }
 
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
@@ -263,7 +304,14 @@ using Avalonia.DrmKit;
 internal static class Program
 {
     public static int Main(string[] args)
-        => SmartPlatform.Start(BuildAvaloniaApp(), args);
+    {
+        var options = new SmartPlatformOptions
+        {
+            InputBackend = new Avalonia.DrmKit.Input.EvdevInputBackend(),
+        };
+
+        return SmartPlatform.Start(BuildAvaloniaApp(), args, options);
+    }
 
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
