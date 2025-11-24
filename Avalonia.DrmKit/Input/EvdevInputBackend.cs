@@ -60,6 +60,9 @@ namespace Avalonia.DrmKit.Input
         private const ushort EV_REL = 0x02;
         private const ushort EV_ABS = 0x03;
 
+        // EVIOCGRAB — эксклюзивный захват устройства (иначе события продолжают попадать в консоль)
+        private const ulong EVIOCGRAB = 0x40044590;
+
         private const ushort REL_X = 0x00;
         private const ushort REL_Y = 0x01;
 
@@ -87,6 +90,9 @@ namespace Avalonia.DrmKit.Input
         }
 
         private static readonly int InputEventSize = Marshal.SizeOf<InputEvent>();
+
+        [DllImport("libc", SetLastError = true)]
+        private static extern int ioctl(int fd, ulong request, int arg);
 
         // ---------------- IInputBackend ----------------
 
@@ -141,6 +147,8 @@ namespace Avalonia.DrmKit.Input
                     FileMode.Open,
                     FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete);
+
+                TryGrabExclusive(fs);
 
                 var buffer = new byte[InputEventSize];
 
@@ -391,6 +399,19 @@ namespace Avalonia.DrmKit.Input
             Dispatcher.UIThread.Post(() => handler(args), DispatcherPriority.Input);
         }
 
+        private static void TryGrabExclusive(FileStream stream)
+        {
+            try
+            {
+                var fd = checked((int)stream.SafeFileHandle.DangerousGetHandle().ToInt64());
+                ioctl(fd, EVIOCGRAB, 1);
+            }
+            catch
+            {
+                // Если не удалось захватить устройство (нет прав/уже занят) — продолжаем читать в shared-режиме.
+            }
+        }
+
         private static ulong ToTimestamp(TimeVal tv)
         {
             // миллисекунды от эпохи; важно только относительное сравнение
@@ -467,6 +488,10 @@ namespace Avalonia.DrmKit.Input
         private string? TryConvertKeyToText(Key key, RawInputModifiers modifiers)
         {
             var shift = (modifiers & RawInputModifiers.Shift) != 0;
+
+            // Сначала пробуем штатный менеджер раскладок (EN/RU + Caps + Shift)
+            if (KeyboardLayoutManager.TryMap(key, shift, _capsLock, out var text) && !string.IsNullOrEmpty(text))
+                return text;
 
             if (key >= Key.A && key <= Key.Z)
             {
