@@ -36,6 +36,8 @@ namespace Avalonia.DrmKit.Input
         private bool _absXInitialized;
         private readonly object _sync = new();
 
+        private bool _capsLock;
+
         private readonly List<Thread> _deviceThreads = new();
         private volatile bool _running;
 
@@ -328,7 +330,7 @@ namespace Avalonia.DrmKit.Input
             // Простейший text input (латиница/цифры/пробел).
             if (isDown)
             {
-                var text = TryConvertKeyToText(key);
+                var text = TryConvertKeyToText(key, modifiers);
                 if (!string.IsNullOrEmpty(text))
                 {
                     var textArgs = new RawTextInputEventArgs(
@@ -424,6 +426,10 @@ namespace Avalonia.DrmKit.Input
                 case Key.RWin:
                     _meta = isDown;
                     break;
+                case Key.CapsLock:
+                    if (isDown)
+                        _capsLock = !_capsLock;
+                    break;
             }
         }
 
@@ -456,28 +462,55 @@ namespace Avalonia.DrmKit.Input
         }
 
         /// <summary>
-        /// Очень простая US-раскладка: только буквы, цифры и пробел.
-        /// CapsLock/Shift пока не учитываем (можно доработать).
+        /// Простейшая US-раскладка с поддержкой Shift/CapsLock и знаков препинания.
         /// </summary>
-        private static string? TryConvertKeyToText(Key key)
+        private string? TryConvertKeyToText(Key key, RawInputModifiers modifiers)
         {
+            var shift = (modifiers & RawInputModifiers.Shift) != 0;
+
             if (key >= Key.A && key <= Key.Z)
             {
-                var c = (char)('a' + (key - Key.A));
-                return c.ToString();
+                var letter = (char)('a' + (key - Key.A));
+                var upper = shift ^ _capsLock;
+                return upper ? char.ToUpperInvariant(letter).ToString() : letter.ToString();
             }
 
-            if (key >= Key.D0 && key <= Key.D9)
+            if (_textMap.TryGetValue(key, out var map))
             {
-                var c = (char)('0' + (key - Key.D0));
-                return c.ToString();
-            }
+                if (shift && map.shifted is not null)
+                    return map.shifted;
 
-            if (key == Key.Space)
-                return " ";
+                return map.normal;
+            }
 
             return null;
         }
+
+        private static readonly Dictionary<Key, (string normal, string? shifted)> _textMap = new()
+        {
+            [Key.Space] = (" ", null),
+            [Key.D0] = ("0", ")"),
+            [Key.D1] = ("1", "!"),
+            [Key.D2] = ("2", "@"),
+            [Key.D3] = ("3", "#"),
+            [Key.D4] = ("4", "$"),
+            [Key.D5] = ("5", "%"),
+            [Key.D6] = ("6", "^"),
+            [Key.D7] = ("7", "&"),
+            [Key.D8] = ("8", "*"),
+            [Key.D9] = ("9", "("),
+            [Key.OemMinus] = ("-", "_"),
+            [Key.OemPlus] = ("=", "+"),
+            [Key.OemOpenBrackets] = ("[", "{"),
+            [Key.OemCloseBrackets] = ("]", "}"),
+            [Key.OemBackslash] = ("\\", "|"),
+            [Key.OemSemicolon] = (";", ":"),
+            [Key.OemQuotes] = ("'", "\""),
+            [Key.OemComma] = (",", "<"),
+            [Key.OemPeriod] = (".", ">"),
+            [Key.OemQuestion] = ("/", "?"),
+            [Key.OemTilde] = ("`", "~"),
+        };
 
         /// <summary>
         /// Минимальная таблица evdev-код → Avalonia.Key.
