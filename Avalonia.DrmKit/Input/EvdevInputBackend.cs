@@ -31,9 +31,7 @@ namespace Avalonia.DrmKit.Input
 
         private double _cursorX;
         private double _cursorY;
-        private int _absX;
-        private int _absY;
-        private bool _absXInitialized;
+        private readonly Dictionary<string, AbsState> _absStates = new();
         private readonly object _sync = new();
 
         private bool _capsLock;
@@ -72,6 +70,7 @@ namespace Avalonia.DrmKit.Input
         private const ushort BTN_LEFT = 0x110;
         private const ushort BTN_RIGHT = 0x111;
         private const ushort BTN_MIDDLE = 0x112;
+        private const ushort BTN_TOUCH = 0x14a;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct TimeVal
@@ -159,7 +158,7 @@ namespace Avalonia.DrmKit.Input
                         continue;
 
                     var ev = ByteArrayToInputEvent(buffer);
-                    ProcessInputEvent(ev);
+                    ProcessInputEvent(ev, path);
                 }
             }
             catch (Exception)
@@ -178,7 +177,7 @@ namespace Avalonia.DrmKit.Input
 
         // ---------------- разбор событий ----------------
 
-        private void ProcessInputEvent(InputEvent ev)
+        private void ProcessInputEvent(InputEvent ev, string devicePath)
         {
             var root = _inputRoot;
             var handler = _onInput;
@@ -193,7 +192,7 @@ namespace Avalonia.DrmKit.Input
                     break;
 
                 case EV_ABS:
-                    HandleAbsoluteEvent(ev, root, handler);
+                    HandleAbsoluteEvent(ev, root, handler, devicePath);
                     break;
 
                 case EV_KEY:
@@ -241,43 +240,88 @@ namespace Avalonia.DrmKit.Input
             }
         }
 
-        private void HandleAbsoluteEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
+        private sealed class AbsState
+        {
+            public int MinX = int.MaxValue;
+            public int MaxX = int.MinValue;
+            public int MinY = int.MaxValue;
+            public int MaxY = int.MinValue;
+            public int LastX;
+            public int LastY;
+
+            public void UpdateRanges(int x, int y)
+            {
+                MinX = Math.Min(MinX, x);
+                MaxX = Math.Max(MaxX, x);
+                MinY = Math.Min(MinY, y);
+                MaxY = Math.Max(MaxY, y);
+            }
+        }
+
+        private void HandleAbsoluteEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, string devicePath)
         {
             // Устройства вроде тачпадов и тач-скринов часто отправляют ABS_X/ABS_Y вместо REL_X/REL_Y.
             // Храним последние значения и двигаем курсор относительно них, чтобы не зависеть от
             // абсолютного диапазона устройства (который может быть > размера экрана).
             lock (_sync)
             {
+                ref var state = ref CollectionsMarshal.GetValueRefOrAddDefault(_absStates, devicePath, out _);
+                state ??= new AbsState();
+
+                var x = state.LastX;
+                var y = state.LastY;
+
+                bool hasPositionUpdate = false;
+
                 bool updated = false;
 
                 if (ev.code == ABS_X)
                 {
-                    var last = _absX;
-                    _absX = ev.value;
-
-                    if (_absXInitialized)
-                    {
-                        _cursorX += _absX - last;
-                        updated = true;
-                    }
+                    x = ev.value;
+                    hasPositionUpdate = true;
                 }
                 else if (ev.code == ABS_Y)
                 {
-                    var last = _absY;
-                    _absY = ev.value;
-
-                    if (_absXInitialized)
-                    {
-                        _cursorY += _absY - last;
-                        updated = true;
-                    }
+                    y = ev.value;
+                    hasPositionUpdate = true;
+                }
+                else if (ev.code == 0x35) // ABS_MT_POSITION_X
+                {
+                    x = ev.value;
+                    hasPositionUpdate = true;
+                }
+                else if (ev.code == 0x36) // ABS_MT_POSITION_Y
+                {
+                    y = ev.value;
+                    hasPositionUpdate = true;
                 }
                 else
                 {
                     return;
                 }
 
-                _absXInitialized |= ev.code is ABS_X or ABS_Y;
+                if (hasPositionUpdate)
+                {
+                    state.UpdateRanges(x, y);
+                    state.LastX = x;
+                    state.LastY = y;
+
+                    var size = _screen?.ScaledSize ?? default;
+                    if (size.Width > 0 && size.Height > 0)
+                    {
+                        if (state.MaxX > state.MinX)
+                            _cursorX = (double)(x - state.MinX) / (state.MaxX - state.MinX) * (size.Width - 1);
+                        else
+                            _cursorX += x - state.MinX;
+
+                        if (state.MaxY > state.MinY)
+                            _cursorY = (double)(y - state.MinY) / (state.MaxY - state.MinY) * (size.Height - 1);
+                        else
+                            _cursorY += y - state.MinY;
+                    }
+
+                    updated = true;
+                }
 
                 if (!updated)
                     return;
@@ -307,12 +351,17 @@ namespace Avalonia.DrmKit.Input
 
         private void HandleKeyEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
         {
+            var isRepeat = ev.value == 2;
             var isDown = ev.value != 0;
 
-            // Кнопки мыши тоже приходят как EV_KEY.
-            if (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE)
+            // Кнопки мыши/тача тоже приходят как EV_KEY.
+            if (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE || ev.code == BTN_TOUCH)
             {
-                HandleMouseButton(ev, root, handler, isDown);
+                var buttonEvent = ev.code == BTN_TOUCH
+                    ? new InputEvent { code = BTN_LEFT, time = ev.time, type = ev.type, value = ev.value }
+                    : ev;
+
+                HandleMouseButton(buttonEvent, root, handler, isDown);
                 return;
             }
 
@@ -320,7 +369,7 @@ namespace Avalonia.DrmKit.Input
             if (key == Key.None)
                 return;
 
-            UpdateModifierState(key, isDown);
+            UpdateModifierState(key, isDown, isRepeat);
 
             var modifiers = GetCurrentModifiers();
             var type = isDown ? RawKeyEventType.KeyDown : RawKeyEventType.KeyUp;
@@ -421,7 +470,7 @@ namespace Avalonia.DrmKit.Input
             }
         }
 
-        private void UpdateModifierState(Key key, bool isDown)
+        private void UpdateModifierState(Key key, bool isDown, bool isRepeat)
         {
             switch (key)
             {
@@ -448,7 +497,7 @@ namespace Avalonia.DrmKit.Input
                     _meta = isDown;
                     break;
                 case Key.CapsLock:
-                    if (isDown)
+                    if (isDown && !isRepeat)
                         _capsLock = !_capsLock;
                     break;
             }
@@ -612,6 +661,7 @@ namespace Avalonia.DrmKit.Input
             68 => Key.F10,
             87 => Key.F11,
             88 => Key.F12,
+            96 => Key.Enter, // KPENTER
             _ => Key.None
         };
     }
