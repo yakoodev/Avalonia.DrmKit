@@ -341,3 +341,8 @@ Attach the on‑screen keyboard overlay:
 
 For more detailed Russian description (including styling and CLI options),  
 see the [Русский](#русский) section above.
+
+## Release Docs
+
+- Input/DRM behavior notes: `docs/INPUT_DRM.md`
+- Detailed release history: `CHANGELOG.md`
