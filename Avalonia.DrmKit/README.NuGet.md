@@ -142,3 +142,27 @@ the regular Avalonia desktop backend instead.
   софт‑курсор с авто‑скрытием и нормальными pointerover‑событиями.
 - Интеграция — один вызов `SmartPlatform.Start(...)` + три extension‑метода
   для `AppBuilder`.
+
+---
+
+## Input behavior defaults (current)
+
+On-screen keyboard (`KeyboardOverlay`):
+
+- opens on pointer/touch focus by default;
+- does not auto-open from keyboard `Tab` focus by default;
+- `Esc` hides overlay without rollback;
+- text rollback is only performed by explicit `Cancel` on overlay keyboard.
+
+Useful attached properties:
+
+- `osk:KeyboardOverlay.OpenOnProgrammaticFocus` (default: `False`)
+- `osk:KeyboardOverlay.OpenOnKeyboardFocus` (default: `False`)
+- `osk:KeyboardOverlay.InputGateTimeoutMs` (default: `300`)
+
+DRM keyboard backend (`DrmKeyboardOptions`) defaults:
+
+- `UseRoutedControlKeys = true`
+- `EnableRawControlKeysFallback = false`
+- `TabAsNavigation = true`
+- `EnterAsTextFallback = false`

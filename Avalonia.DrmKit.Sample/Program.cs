@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.DrmKit;
 using Avalonia.DrmKit.Input;
 using Avalonia.ReactiveUI;
@@ -9,10 +9,16 @@ internal static class Program
 {
     public static int Main(string[] args)
     {
+        var keyboardOptions = new DrmKeyboardOptions
+        {
+            Layout = "us,ru",
+            Options = "grp:alt_shift_toggle"
+        };
+
         var options = new SmartPlatformOptions
         {
-            // Пример: явно выбрать backend ввода evdev, карту и режим вывода.
-            InputBackend = new EvdevInputBackend(),
+            // Example: explicit evdev input backend, DRM card and output mode.
+            InputBackend = new DrmUnifiedInputBackend(keyboardOptions),
             DrmCard = "/dev/dri/card1",
             Resolution = new PixelSize(1920, 1080),
             Scaling = 1.0,

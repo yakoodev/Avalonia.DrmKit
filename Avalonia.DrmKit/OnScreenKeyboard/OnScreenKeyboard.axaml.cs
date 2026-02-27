@@ -16,7 +16,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
     {
         private bool _caps;
         private TextBox? _target;
-        private string _originalText = string.Empty;
+        private TextBox? _sessionTarget;
+        private string _sessionOriginalText = string.Empty;
+        private bool _sessionActive;
         public event EventHandler? CloseRequested;
 
 
@@ -24,6 +26,8 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public OnScreenKeyboard()
         {
             InitializeComponent();
+            Focusable = false;
+            IsTabStop = false;
 
             _caps = KeyboardLayoutManager.Caps;
 
@@ -36,7 +40,29 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public void Attach(TextBox textBox)
         {
             _target = textBox;
-            _originalText = textBox.Text ?? string.Empty;
+            BeginEditSession(textBox);
+        }
+
+        private void BeginEditSession(TextBox textBox)
+        {
+            if (_sessionActive && ReferenceEquals(_sessionTarget, textBox))
+                return;
+
+            _sessionTarget = textBox;
+            _sessionOriginalText = textBox.Text ?? string.Empty;
+            _sessionActive = true;
+        }
+
+        private void EndEditSession()
+        {
+            _sessionActive = false;
+            _sessionTarget = null;
+            _sessionOriginalText = string.Empty;
+        }
+
+        public void OnOverlayHidden()
+        {
+            EndEditSession();
         }
 
         private void Rebuild()
@@ -86,7 +112,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 Content = label,
                 MinHeight = 42,
                 IsTabStop = false,
-                Focusable = true,
+                Focusable = false,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
@@ -141,7 +167,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 if (focused is not null)
                 {
                     _target = focused;
-                    _originalText = _target.Text ?? string.Empty;
+                    BeginEditSession(focused);
                 }
             }
             if (_target is null) return;
@@ -213,7 +239,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 {
                     if (restoreOriginalText)
                     {
-                        tb.Text = _originalText;
+                        var rollback = _sessionActive && ReferenceEquals(_sessionTarget, tb)
+                            ? _sessionOriginalText
+                            : (tb.Text ?? string.Empty);
+
+                        tb.Text = rollback;
                         tb.SelectionStart = tb.SelectionEnd = tb.Text?.Length ?? 0;
                     }
 
@@ -221,6 +251,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     tl?.FocusManager?.ClearFocus();
                 }
 
+                EndEditSession();
                 HideOverlay();
             }
             void Backspace()

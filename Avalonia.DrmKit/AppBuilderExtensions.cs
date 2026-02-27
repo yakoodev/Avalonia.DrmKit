@@ -75,6 +75,7 @@ namespace Avalonia.DrmKit
             return builder;
         }
 
+        [Obsolete("Use DrmUnifiedInputBackend (IInputBackend) through SmartPlatformOptions.InputBackend. This API is legacy and may emit duplicate input events.")]
         public static AppBuilder UseLinuxKeyboardListener(this AppBuilder builder, Func<Input.KeyboardListener>? factory = null)
         {
             builder.AfterSetup(_ =>
@@ -82,6 +83,11 @@ namespace Avalonia.DrmKit
                 Console.WriteLine("[DrmKit] UseLinuxKeyboardListener enabled");
 
                 if (!OperatingSystem.IsLinux()) return;
+                if (RuntimeInputState.UnifiedBackendEnabled)
+                {
+                    Console.WriteLine("[DrmKit] UseLinuxKeyboardListener skipped: unified input backend is active.");
+                    return;
+                }
 
                 var sys = SmartPlatform.DetectSystemType(Array.Empty<string>());
                 var isDrm = sys.IsDrm();
@@ -141,6 +147,7 @@ namespace Avalonia.DrmKit
             return builder;
         }
 
+        [Obsolete("Use DrmUnifiedInputBackend (IInputBackend) through SmartPlatformOptions.InputBackend. This API is legacy and may emit duplicate input events.")]
         public static AppBuilder UseEvdevMouseFallback(this AppBuilder builder)
         {
             builder.AfterSetup(_ =>
@@ -148,6 +155,11 @@ namespace Avalonia.DrmKit
                 if (!OperatingSystem.IsLinux()) return;
                 var sys = SmartPlatform.DetectSystemType(Array.Empty<string>());
                 if (!sys.IsDrm()) return;
+                if (RuntimeInputState.UnifiedBackendEnabled)
+                {
+                    Console.WriteLine("[DrmKit] UseEvdevMouseFallback skipped: unified input backend is active.");
+                    return;
+                }
 
                 Console.WriteLine("[DrmKit] UseEvdevMouseFallback enabled");
                 var mouse = new Input.EvdevMouseListener();
