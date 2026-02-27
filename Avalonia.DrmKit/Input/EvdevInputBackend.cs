@@ -26,6 +26,10 @@ public class DrmUnifiedInputBackend : IInputBackend
     private readonly TouchDevice _touch = new();
 
     private readonly XkbKeyboardProcessor _xkb;
+    private readonly bool _useRoutedControlKeys;
+    private readonly bool _enableRawControlKeysFallback;
+    private readonly bool _tabAsNavigation;
+    private readonly bool _enterAsTextFallback;
 
     private IScreenInfoProvider? _screen;
     private IInputRoot? _inputRoot;
@@ -153,7 +157,12 @@ public class DrmUnifiedInputBackend : IInputBackend
 
     public DrmUnifiedInputBackend(DrmKeyboardOptions keyboardOptions)
     {
-        _xkb = new XkbKeyboardProcessor(keyboardOptions ?? new DrmKeyboardOptions());
+        var options = keyboardOptions ?? new DrmKeyboardOptions();
+        _xkb = new XkbKeyboardProcessor(options);
+        _useRoutedControlKeys = options.UseRoutedControlKeys;
+        _enableRawControlKeysFallback = options.EnableRawControlKeysFallback;
+        _tabAsNavigation = options.TabAsNavigation;
+        _enterAsTextFallback = options.EnterAsTextFallback;
         if (OperatingSystem.IsLinux() && !_xkb.IsAvailable)
             Console.Error.WriteLine("[DrmKit][input] xkbcommon is unavailable. Keyboard text input will use limited fallback.");
     }
@@ -431,15 +440,17 @@ public class DrmUnifiedInputBackend : IInputBackend
             var xkbText = _xkb.ProcessKey(ev.code, keyState);
             var keySymbol = string.IsNullOrEmpty(xkbText) ? null : xkbText;
             var isEditingControlKey = IsEditingControlKey(key);
+            var routeEditingControlKey = _useRoutedControlKeys && isEditingControlKey;
 
-            if (isEditingControlKey)
+            if (routeEditingControlKey)
             {
-                PostRoutedKeyToFocused(root, key, isDownOrRepeat);
+                PostRoutedKeyToFocused(root, key, isDownOrRepeat, modifiers);
                 if (_debugInput)
                     Console.WriteLine($"[DrmKit][input][route] key={key} state={keyState} target=focused-control");
             }
 
-            if (!isEditingControlKey)
+            var emitRawKey = !isEditingControlKey || !_useRoutedControlKeys || _enableRawControlKeysFallback;
+            if (emitRawKey)
             {
                 var keyArgs = new RawKeyEventArgs(
                     _keyboard,
@@ -459,7 +470,12 @@ public class DrmUnifiedInputBackend : IInputBackend
             {
                 var text = xkbText;
                 if (string.IsNullOrEmpty(text))
-                    text = TryConvertScancodeToTextFallback(ev.code, modifiers, isRepeat);
+                    text = TryConvertScancodeToTextFallback(
+                        ev.code,
+                        modifiers,
+                        isRepeat,
+                        _tabAsNavigation,
+                        _enterAsTextFallback);
 
                 if (_debugInput)
                 {
@@ -726,7 +742,12 @@ public class DrmUnifiedInputBackend : IInputBackend
         _cursorY = Math.Clamp(_cursorY, 0, size.Height - 1);
     }
 
-    private static string? TryConvertScancodeToTextFallback(ushort evdevCode, RawInputModifiers modifiers, bool isRepeat)
+    private static string? TryConvertScancodeToTextFallback(
+        ushort evdevCode,
+        RawInputModifiers modifiers,
+        bool isRepeat,
+        bool tabAsNavigation,
+        bool enterAsTextFallback)
     {
         if (isRepeat)
             return null;
@@ -745,6 +766,8 @@ public class DrmUnifiedInputBackend : IInputBackend
         return evdevCode switch
         {
             57 => " ",
+            15 when !tabAsNavigation => "\t",
+            28 when enterAsTextFallback => "\n",
             _ => null
         };
     }
@@ -761,7 +784,7 @@ public class DrmUnifiedInputBackend : IInputBackend
             or Key.PageUp
             or Key.PageDown;
 
-    private static void PostRoutedKeyToFocused(IInputRoot root, Key key, bool isDown)
+    private static void PostRoutedKeyToFocused(IInputRoot root, Key key, bool isDown, RawInputModifiers rawModifiers)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -772,9 +795,26 @@ public class DrmUnifiedInputBackend : IInputBackend
             inputElement.RaiseEvent(new KeyEventArgs
             {
                 RoutedEvent = isDown ? InputElement.KeyDownEvent : InputElement.KeyUpEvent,
-                Key = key
+                Key = key,
+                KeyModifiers = ToKeyModifiers(rawModifiers)
             });
         }, DispatcherPriority.Input);
+    }
+
+    private static KeyModifiers ToKeyModifiers(RawInputModifiers rawModifiers)
+    {
+        KeyModifiers keyModifiers = KeyModifiers.None;
+
+        if ((rawModifiers & RawInputModifiers.Shift) != 0)
+            keyModifiers |= KeyModifiers.Shift;
+        if ((rawModifiers & RawInputModifiers.Control) != 0)
+            keyModifiers |= KeyModifiers.Control;
+        if ((rawModifiers & RawInputModifiers.Alt) != 0)
+            keyModifiers |= KeyModifiers.Alt;
+        if ((rawModifiers & RawInputModifiers.Meta) != 0)
+            keyModifiers |= KeyModifiers.Meta;
+
+        return keyModifiers;
     }
 
     private static bool TryMapLetter(ushort code, out char c)

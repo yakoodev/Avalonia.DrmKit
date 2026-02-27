@@ -34,6 +34,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
     public static class KeyboardOverlay
     {
+        private static readonly AttachedProperty<bool> IsAttachedProperty =
+            AvaloniaProperty.RegisterAttached<Control, Control, bool>("IsAttached_Internal");
+
         public static readonly AttachedProperty<bool> IsEnabledProperty =
             AvaloniaProperty.RegisterAttached<Control, Control, bool>("IsEnabled");
 
@@ -64,6 +67,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public static readonly AttachedProperty<bool> OpenOnProgrammaticFocusProperty =
             AvaloniaProperty.RegisterAttached<Control, Control, bool>("OpenOnProgrammaticFocus", false);
 
+        public static readonly AttachedProperty<bool> OpenOnKeyboardFocusProperty =
+            AvaloniaProperty.RegisterAttached<Control, Control, bool>("OpenOnKeyboardFocus", false);
+
+        public static readonly AttachedProperty<double> InputGateTimeoutMsProperty =
+            AvaloniaProperty.RegisterAttached<Control, Control, double>("InputGateTimeoutMs", 300);
+
         public static readonly AttachedProperty<bool> EnsureVisibleWrapInScrollViewerProperty =
             AvaloniaProperty.RegisterAttached<Control, Control, bool>("EnsureVisibleWrapInScrollViewer", true);
 
@@ -83,6 +92,10 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public static double GetExtraSafeGap(Control element) => element.GetValue(ExtraSafeGapProperty);
         public static void SetOpenOnProgrammaticFocus(Control element, bool value) => element.SetValue(OpenOnProgrammaticFocusProperty, value);
         public static bool GetOpenOnProgrammaticFocus(Control element) => element.GetValue(OpenOnProgrammaticFocusProperty);
+        public static void SetOpenOnKeyboardFocus(Control element, bool value) => element.SetValue(OpenOnKeyboardFocusProperty, value);
+        public static bool GetOpenOnKeyboardFocus(Control element) => element.GetValue(OpenOnKeyboardFocusProperty);
+        public static void SetInputGateTimeoutMs(Control element, double value) => element.SetValue(InputGateTimeoutMsProperty, value);
+        public static double GetInputGateTimeoutMs(Control element) => element.GetValue(InputGateTimeoutMsProperty);
         public static void SetEnsureVisibleWrapInScrollViewer(Control element, bool value) => element.SetValue(EnsureVisibleWrapInScrollViewerProperty, value);
         public static bool GetEnsureVisibleWrapInScrollViewer(Control element) => element.GetValue(EnsureVisibleWrapInScrollViewerProperty);
 
@@ -97,7 +110,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             {
                 if (ctrl is TextBox tb)
                 {
-                    if ((bool)e.NewValue!)
+                    if ((bool)e.NewValue! && !tb.GetValue(IsAttachedProperty))
                         Attach(tb);
                 }
             });
@@ -105,13 +118,28 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
         private static void Attach(TextBox tb)
         {
+            tb.SetValue(IsAttachedProperty, true);
+
             tb.AddHandler(
                 InputElement.PointerPressedEvent,
                 (_, __) =>
                 {
                     var tl = TopLevel.GetTopLevel(tb);
                     if (tl is not null)
-                        MarkUserInput(tl);
+                        MarkUserInput(tl, tb);
+                },
+                RoutingStrategies.Tunnel);
+
+            tb.AddHandler(
+                InputElement.KeyDownEvent,
+                (_, __) =>
+                {
+                    if (!GetOpenOnKeyboardFocus(tb))
+                        return;
+
+                    var tl = TopLevel.GetTopLevel(tb);
+                    if (tl is not null)
+                        MarkUserInput(tl, tb);
                 },
                 RoutingStrategies.Tunnel);
 
@@ -129,9 +157,10 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
                 var kbPanel = EnsurePanel(hostPanel, tl);
                 var allowProgrammatic = GetOpenOnProgrammaticFocus(tb);
+                var allowKeyboardFocus = GetOpenOnKeyboardFocus(tb);
                 var userInitiated = IsUserInputRecent(tl);
 
-                if (!allowProgrammatic && !userInitiated)
+                if (!allowProgrammatic && !allowKeyboardFocus && !userInitiated)
                 {
                     var session = GetSession(kbPanel);
                     session.CurrentTarget = tb;
@@ -243,14 +272,6 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 }
             };
 
-            tl.AddHandler(
-                InputElement.PointerPressedEvent,
-                (_, __) =>
-                {
-                    MarkUserInput(tl);
-                },
-                RoutingStrategies.Tunnel);
-
             tl.AddHandler(InputElement.LostFocusEvent, (_, __) => MaybeHideIfNoFocusedTextBox(tl, panel), RoutingStrategies.Tunnel);
             tl.AddHandler(
                         InputElement.KeyDownEvent,
@@ -287,10 +308,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         private static KeyboardOverlaySessionState GetSession(Border panel)
             => s_sessions.TryGetValue(panel, out var session) ? session : new KeyboardOverlaySessionState();
 
-        private static void MarkUserInput(TopLevel tl)
+        private static void MarkUserInput(TopLevel tl, Control? source)
         {
             var gate = GetOrCreateInputGate(tl);
-            gate.PendingUserInputUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(700);
+            var timeoutMs = source is null ? 300 : Math.Clamp(GetInputGateTimeoutMs(source), 50, 3000);
+            gate.PendingUserInputUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
         }
 
         private static bool IsUserInputRecent(TopLevel tl)
