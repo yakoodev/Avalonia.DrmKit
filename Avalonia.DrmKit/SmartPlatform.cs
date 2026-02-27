@@ -63,7 +63,10 @@ namespace Avalonia.DrmKit
 
             // Всё, что не Linux DRM — обычный Desktop
             if (!system.IsLinux() || system.IsDesktopSystem())
+            {
+                RuntimeInputState.UnifiedBackendEnabled = false;
                 return builder.StartWithClassicDesktopLifetime(args);
+            }
 
             // --- выбор карты DRM и VideoMode ---
 
@@ -116,7 +119,9 @@ namespace Avalonia.DrmKit
             var inputBackend =
                 options.InputBackend ??
                 options.InputBackendFactory?.Invoke() ??
-                new LibInputBackend(options.LibInputOptions ?? new LibInputBackendOptions());
+                new Input.DrmUnifiedInputBackend(options.KeyboardOptions ?? new Input.DrmKeyboardOptions());
+
+            RuntimeInputState.UnifiedBackendEnabled = inputBackend is Input.DrmUnifiedInputBackend;
 
             var connectorsForceProbe = options.ConnectorsForceProbe ?? true;
 
@@ -344,6 +349,12 @@ namespace Avalonia.DrmKit
         /// Игнорируются, если задан кастомный InputBackend или InputBackendFactory.
         /// </summary>
         public LibInputBackendOptions? LibInputOptions { get; set; }
+
+        /// <summary>
+        /// Опции раскладки клавиатуры для DrmUnifiedInputBackend (xkbcommon).
+        /// Игнорируются, если задан кастомный InputBackend или InputBackendFactory.
+        /// </summary>
+        public Input.DrmKeyboardOptions? KeyboardOptions { get; set; }
 
         /// <summary>
         /// Если true (по умолчанию) — при ошибке DRM будет попытка уйти на Desktop.

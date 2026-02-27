@@ -109,6 +109,7 @@ namespace Avalonia.DrmKit.Input
                 case 105: return Key.Left;
                 case 106: return Key.Right;
                 case 108: return Key.Down;
+                case 111: return Key.Delete;
                 case 1: return Key.Escape;
                 default:
                     Logger.TryGet(LogEventLevel.Error, LogArea.Control)?.Log(null, $"Unknown scancode: {scancode}");
