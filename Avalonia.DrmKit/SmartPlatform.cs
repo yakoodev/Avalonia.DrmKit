@@ -119,7 +119,9 @@ namespace Avalonia.DrmKit
             var inputBackend =
                 options.InputBackend ??
                 options.InputBackendFactory?.Invoke() ??
-                new Input.DrmUnifiedInputBackend(options.KeyboardOptions ?? new Input.DrmKeyboardOptions());
+                new Input.DrmUnifiedInputBackend(
+                    options.KeyboardOptions ?? new Input.DrmKeyboardOptions(),
+                    options.TouchOptions);
 
             RuntimeInputState.UnifiedBackendEnabled = inputBackend is Input.DrmUnifiedInputBackend;
 
@@ -355,6 +357,12 @@ namespace Avalonia.DrmKit
         /// Игнорируются, если задан кастомный InputBackend или InputBackendFactory.
         /// </summary>
         public Input.DrmKeyboardOptions? KeyboardOptions { get; set; }
+
+        /// <summary>
+        /// Опции обработки тача для DrmUnifiedInputBackend.
+        /// Игнорируются, если задан кастомный InputBackend или InputBackendFactory.
+        /// </summary>
+        public Input.DrmTouchOptions? TouchOptions { get; set; }
 
         /// <summary>
         /// Если true (по умолчанию) — при ошибке DRM будет попытка уйти на Desktop.

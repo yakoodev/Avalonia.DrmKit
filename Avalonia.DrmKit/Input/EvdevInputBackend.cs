@@ -30,6 +30,7 @@ public class DrmUnifiedInputBackend : IInputBackend
     private readonly bool _enableRawControlKeysFallback;
     private readonly bool _tabAsNavigation;
     private readonly bool _enterAsTextFallback;
+    private readonly DrmTouchOptions _touchOptions;
 
     private IScreenInfoProvider? _screen;
     private IInputRoot? _inputRoot;
@@ -59,6 +60,17 @@ public class DrmUnifiedInputBackend : IInputBackend
 
     private bool _touchDown;
     private long _touchId;
+    private bool _touchPendingBegin;
+    private bool _touchPendingEnd;
+    private bool _touchHasStartPos;
+    private Point _touchStartPos;
+    private Point _touchLastPos;
+    private ulong _touchStartTimestamp;
+    private bool _touchExceededTapDistance;
+
+    private bool _pendingAbsolutePosition;
+    private double _pendingCursorX;
+    private double _pendingCursorY;
 
     private const ushort EV_SYN = 0x00;
     private const ushort EV_KEY = 0x01;
@@ -151,13 +163,19 @@ public class DrmUnifiedInputBackend : IInputBackend
     private static readonly int InputEventSize = Marshal.SizeOf<InputEvent>();
 
     public DrmUnifiedInputBackend()
-        : this(new DrmKeyboardOptions())
+        : this(new DrmKeyboardOptions(), null)
     {
     }
 
     public DrmUnifiedInputBackend(DrmKeyboardOptions keyboardOptions)
+        : this(keyboardOptions, null)
+    {
+    }
+
+    public DrmUnifiedInputBackend(DrmKeyboardOptions keyboardOptions, DrmTouchOptions? touchOptions)
     {
         var options = keyboardOptions ?? new DrmKeyboardOptions();
+        _touchOptions = touchOptions ?? new DrmTouchOptions();
         _xkb = new XkbKeyboardProcessor(options);
         _useRoutedControlKeys = options.UseRoutedControlKeys;
         _enableRawControlKeysFallback = options.EnableRawControlKeysFallback;
@@ -301,6 +319,8 @@ public class DrmUnifiedInputBackend : IInputBackend
                 break;
 
             case EV_SYN:
+                HandleSyncEvent(ev, root, handler);
+                break;
             default:
                 break;
         }
@@ -341,10 +361,7 @@ public class DrmUnifiedInputBackend : IInputBackend
                         break;
 
                     device.AbsX.UpdateObservation(ev.value);
-                    _cursorX = MapAbsoluteToScreen(ev.value, device.AbsX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0));
-                    EmitPointerMove(ev.time, root, handler);
-                    if (_touchDown)
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+                    QueueAbsoluteX(MapAbsoluteToScreen(ev.value, device.AbsX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0)));
                     break;
 
                 case ABS_Y:
@@ -352,45 +369,133 @@ public class DrmUnifiedInputBackend : IInputBackend
                         break;
 
                     device.AbsY.UpdateObservation(ev.value);
-                    _cursorY = MapAbsoluteToScreen(ev.value, device.AbsY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0));
-                    EmitPointerMove(ev.time, root, handler);
-                    if (_touchDown)
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+                    QueueAbsoluteY(MapAbsoluteToScreen(ev.value, device.AbsY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0)));
                     break;
 
                 case ABS_MT_POSITION_X:
                     device.PreferMtAxes = true;
                     device.MtX.UpdateObservation(ev.value);
-                    _cursorX = MapAbsoluteToScreen(ev.value, device.MtX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0));
-                    EmitPointerMove(ev.time, root, handler);
-                    if (_touchDown)
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+                    QueueAbsoluteX(MapAbsoluteToScreen(ev.value, device.MtX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0)));
                     break;
 
                 case ABS_MT_POSITION_Y:
                     device.PreferMtAxes = true;
                     device.MtY.UpdateObservation(ev.value);
-                    _cursorY = MapAbsoluteToScreen(ev.value, device.MtY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0));
-                    EmitPointerMove(ev.time, root, handler);
-                    if (_touchDown)
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+                    QueueAbsoluteY(MapAbsoluteToScreen(ev.value, device.MtY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0)));
                     break;
 
                 case ABS_MT_TRACKING_ID:
                     device.HasTrackingId = true;
-                    if (ev.value >= 0 && !_touchDown)
+                    if (ev.value >= 0)
                     {
+                        if (_touchDown || _touchPendingBegin)
+                        {
+                            if (_debugInput)
+                                Console.WriteLine($"[DrmKit][input][touch] ignoring extra contact trackingId={ev.value} (single-touch mode)");
+                            break;
+                        }
+
                         _touchId = ev.value;
-                        _touchDown = true;
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin);
+                        _touchPendingBegin = true;
+                        _touchPendingEnd = false;
+                        _touchExceededTapDistance = false;
                     }
-                    else if (ev.value < 0 && _touchDown)
+                    else if (ev.value < 0 && (_touchDown || _touchPendingBegin))
                     {
-                        EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd);
-                        _touchDown = false;
+                        _touchPendingEnd = true;
                     }
                     break;
             }
+        }
+    }
+
+    private void HandleSyncEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
+    {
+        lock (_sync)
+        {
+            var tapDistance = Math.Max(0, _touchOptions.TapMaxDistancePx);
+            var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
+            var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
+
+            var hadPendingPosition = _pendingAbsolutePosition;
+            var previousPoint = new Point(_cursorX, _cursorY);
+            if (_pendingAbsolutePosition)
+            {
+                _cursorX = _pendingCursorX;
+                _cursorY = _pendingCursorY;
+                ClampCursor();
+            }
+
+            var currentPoint = new Point(_cursorX, _cursorY);
+            var absoluteDelta = Distance(previousPoint, currentPoint);
+            var movedFromLastTouch = _touchDown
+                ? Distance(_touchLastPos, currentPoint)
+                : 0;
+            var movedEnoughForTouchUpdate = !_touchOptions.EnableTapSwipeSeparation
+                || movedFromLastTouch >= jitterThreshold;
+            var suppressPointerJitter = _touchDown || _touchPendingBegin;
+            var emitPointerMove = hadPendingPosition
+                                  && (!suppressPointerJitter
+                                      || !_touchOptions.EnableTapSwipeSeparation
+                                      || absoluteDelta >= jitterThreshold);
+
+            if (emitPointerMove)
+                EmitPointerMove(ev.time, root, handler);
+
+            var emittedBegin = false;
+            if (_touchPendingBegin)
+            {
+                _touchPendingBegin = false;
+                _touchDown = true;
+                _touchStartTimestamp = ToTimestamp(ev.time);
+                _touchStartPos = currentPoint;
+                _touchLastPos = currentPoint;
+                _touchHasStartPos = true;
+                _touchExceededTapDistance = false;
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin);
+                emittedBegin = true;
+            }
+
+            if (_touchDown && !emittedBegin && hadPendingPosition && movedEnoughForTouchUpdate)
+            {
+                if (_touchHasStartPos)
+                {
+                    var totalTravel = Distance(_touchStartPos, currentPoint);
+                    if (totalTravel > tapDistance)
+                        _touchExceededTapDistance = true;
+                }
+
+                _touchLastPos = currentPoint;
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+            }
+
+            if (_touchPendingEnd && _touchDown)
+            {
+                _touchPendingEnd = false;
+                var endTs = ToTimestamp(ev.time);
+                var durationMs = endTs >= _touchStartTimestamp ? (long)(endTs - _touchStartTimestamp) : 0;
+                var totalTravel = _touchHasStartPos ? Distance(_touchStartPos, currentPoint) : 0;
+                var isTap = !_touchExceededTapDistance
+                            && totalTravel <= tapDistance
+                            && durationMs <= tapDurationMs;
+
+                if (_debugInput)
+                {
+                    Console.WriteLine(
+                        $"[DrmKit][input][touch] end id={_touchId} tap={isTap} " +
+                        $"distance={totalTravel:0.##} durationMs={durationMs}");
+                }
+
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd);
+                _touchDown = false;
+                _touchHasStartPos = false;
+            }
+            else if (_touchPendingEnd)
+            {
+                _touchPendingEnd = false;
+            }
+
+            _pendingAbsolutePosition = false;
         }
     }
 
@@ -413,7 +518,7 @@ public class DrmUnifiedInputBackend : IInputBackend
                 if (device.HasTrackingId)
                     return;
 
-                HandleTouchButton(ev, root, handler, isDownOrRepeat);
+                HandleTouchButton(isDownOrRepeat);
                 return;
             }
 
@@ -669,21 +774,46 @@ public class DrmUnifiedInputBackend : IInputBackend
         Post(handler, args);
     }
 
-    private void HandleTouchButton(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, bool isDown)
+    private void HandleTouchButton(bool isDown)
     {
-        if (isDown && !_touchDown)
+        if (isDown)
         {
-            _touchDown = true;
+            if (_touchDown || _touchPendingBegin)
+                return;
+
             _touchId++;
-            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin);
+            _touchPendingBegin = true;
+            _touchPendingEnd = false;
+            _touchExceededTapDistance = false;
             return;
         }
 
-        if (!isDown && _touchDown)
+        if (_touchDown || _touchPendingBegin)
+            _touchPendingEnd = true;
+    }
+
+    private void QueueAbsoluteX(double x)
+    {
+        if (!_pendingAbsolutePosition)
         {
-            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd);
-            _touchDown = false;
+            _pendingCursorX = _cursorX;
+            _pendingCursorY = _cursorY;
+            _pendingAbsolutePosition = true;
         }
+
+        _pendingCursorX = x;
+    }
+
+    private void QueueAbsoluteY(double y)
+    {
+        if (!_pendingAbsolutePosition)
+        {
+            _pendingCursorX = _cursorX;
+            _pendingCursorY = _cursorY;
+            _pendingAbsolutePosition = true;
+        }
+
+        _pendingCursorY = y;
     }
 
     private void EmitPointerMove(TimeVal time, IInputRoot root, Action<RawInputEventArgs> handler)
@@ -730,6 +860,13 @@ public class DrmUnifiedInputBackend : IInputBackend
             _touchId);
 
         Post(handler, args);
+    }
+
+    private static double Distance(Point a, Point b)
+    {
+        var dx = a.X - b.X;
+        var dy = a.Y - b.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     private void ClampCursor()
@@ -1036,6 +1173,11 @@ public sealed class EvdevInputBackend : DrmUnifiedInputBackend
 
     public EvdevInputBackend(DrmKeyboardOptions keyboardOptions)
         : base(keyboardOptions)
+    {
+    }
+
+    public EvdevInputBackend(DrmKeyboardOptions keyboardOptions, DrmTouchOptions? touchOptions)
+        : base(keyboardOptions, touchOptions)
     {
     }
 }
