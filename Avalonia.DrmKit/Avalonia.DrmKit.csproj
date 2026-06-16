@@ -6,6 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
+		<Version>12.0.4</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 
@@ -31,9 +32,9 @@
 
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReleaseNotes>
-			update styles
-			update docs
-			remove touchscreen for softcursor
+			Update Avalonia dependencies to 12.0.4.
+			Migrate ReactiveUI integration to ReactiveUI.Avalonia.
+			Fix Avalonia 12 API compatibility.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
@@ -49,11 +50,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Avalonia" Version="11.3.9" />
-		<PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
-		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.9" />
-		<PackageReference Include="Avalonia.LinuxFramebuffer" Version="11.3.9" />
-		<PackageReference Include="Avalonia.ReactiveUI" Version="11.3.8" />
-		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+		<PackageReference Include="Avalonia" Version="12.0.4" />
+		<PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
+		<PackageReference Include="Avalonia.LinuxFramebuffer" Version="12.0.4" />
+		<PackageReference Include="ReactiveUI.Avalonia" Version="12.0.3" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="All" />
 	</ItemGroup>
 </Project>

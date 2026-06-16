@@ -1,7 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.DrmKit;
 using Avalonia.DrmKit.Input;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 
 namespace Avalonia.DrmKit.Sample;
 
@@ -33,6 +33,6 @@ internal static class Program
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace()
-            .UseReactiveUI()
+            .UseReactiveUI(_ => { })
             .UseDrmSoftCursor();
 }

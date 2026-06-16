@@ -14,9 +14,9 @@
 
     <StackPanel Grid.Row="1" Grid.Column="0" Margin="12" Spacing="8">
       <TextBlock Text="TextBox c автопопапом клавиатуры"/>
-      <TextBox x:Name="FirstTb" osk:KeyboardOverlay.IsEnabled="True" Watermark="Нажми сюда"/>
+      <TextBox x:Name="FirstTb" osk:KeyboardOverlay.IsEnabled="True" PlaceholderText="Нажми сюда"/>
       <TextBlock Margin="0,12,0,0" Text="Ещё один TextBox"/>
-      <TextBox osk:KeyboardOverlay.IsEnabled="True" Watermark="И сюда тоже"/>
+      <TextBox osk:KeyboardOverlay.IsEnabled="True" PlaceholderText="И сюда тоже"/>
     </StackPanel>
 
     <StackPanel Grid.Row="1" Grid.Column="1" Margin="12" Spacing="8">

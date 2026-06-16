@@ -2,7 +2,7 @@
 using Avalonia.LinuxFramebuffer;
 using Avalonia.LinuxFramebuffer.Input;
 using Avalonia.LinuxFramebuffer.Input.LibInput;
-using Avalonia.ReactiveUI;
+using ReactiveUI.Avalonia;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -160,7 +160,7 @@ namespace Avalonia.DrmKit
             => AppBuilder.Configure<Application>()
                 .UsePlatformDetect()
                 .LogToTrace()
-                .UseReactiveUI();
+                .UseReactiveUI(_ => { });
 
         public enum SystemType { DRM, Windows, LinuxDesktop, Android, MacOS }
 

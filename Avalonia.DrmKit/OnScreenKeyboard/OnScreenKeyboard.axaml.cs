@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.DrmKit.Input;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -81,6 +80,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             for (int r = 0; r < containers.Length; r++)
             {
                 var grid = containers[r];
+                if (grid is null)
+                    continue;
+
                 grid.Children.Clear();
                 foreach (var key in rows[r])
                     grid.Children.Add(CreateKeyButton(key));
@@ -248,7 +250,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     }
 
                     var tl = TopLevel.GetTopLevel(tb);
-                    tl?.FocusManager?.ClearFocus();
+                    tl?.FocusManager?.Focus(null!, NavigationMethod.Unspecified, KeyModifiers.None);
                 }
 
                 EndEditSession();
@@ -271,21 +273,6 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     _target.Text = content.Remove(start - 1, 1);
                     _target.SelectionEnd = _target.SelectionStart = start - 1;
                 }
-            }
-
-            void SendEnter()
-            {
-                // 1) шлём Key.Enter в фокус
-                _target!.RaiseEvent(new KeyEventArgs
-                {
-                    RoutedEvent = InputElement.KeyDownEvent,
-                    Key = Key.Enter
-                });
-
-                // 2) если есть Button с IsDefault="True" — жмём его
-                var tl = TopLevel.GetTopLevel(this);
-                var defaultBtn = tl?.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault);
-                defaultBtn?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             }
 
             void HideOverlay()

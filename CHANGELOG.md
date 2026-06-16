@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.4] - 2026-06-16
+### Changed
+- Updated Avalonia packages to 12.0.4.
+- Replaced `Avalonia.ReactiveUI` with `ReactiveUI.Avalonia`.
+- Removed the unused sample `Avalonia.Diagnostics` package reference.
+- Updated sample `TextBox.Watermark` usage to `PlaceholderText`.
+
+### Fixed
+- Fixed Avalonia 12 compatibility for ReactiveUI app builder setup.
+- Fixed focus clearing for the on-screen keyboard using the Avalonia 12 focus API.
+
 ## [1.0.0] - 2026-02-27
 ### Added
 - Official DRM-first input path for physical keyboard text input using XKB-backed `TextInput` flow.
