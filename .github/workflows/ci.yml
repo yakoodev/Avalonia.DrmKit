@@ -39,6 +39,9 @@ jobs:
       - name: Build (Release)
         run: dotnet build "$PROJECT_PATH" -c Release --no-restore
 
+      - name: Test
+        run: dotnet test Avalonia.DrmKit.Tests/Avalonia.DrmKit.Tests.csproj -c Release
+
       - name: Resolve version (from dispatch input or tag)
         id: ver
         shell: bash
