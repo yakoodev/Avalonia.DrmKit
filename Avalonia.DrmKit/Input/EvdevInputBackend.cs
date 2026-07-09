@@ -58,24 +58,13 @@ public class DrmUnifiedInputBackend : IInputBackend
     private bool _rightButton;
     private bool _middleButton;
 
-    private bool _touchDown;
-    private long _touchId;
-    private bool _touchPendingBegin;
-    private bool _touchPendingEnd;
-    private bool _touchHasStartPos;
-    private Point _touchStartPos;
-    private Point _touchLastPos;
-    private ulong _touchStartTimestamp;
-    private bool _touchExceededTapDistance;
-
-    private bool _pendingAbsolutePosition;
-    private double _pendingCursorX;
-    private double _pendingCursorY;
-
     private const ushort EV_SYN = 0x00;
     private const ushort EV_KEY = 0x01;
     private const ushort EV_REL = 0x02;
     private const ushort EV_ABS = 0x03;
+
+    private const ushort SYN_REPORT = 0x00;
+    private const ushort SYN_DROPPED = 0x03;
 
     private const ushort REL_X = 0x00;
     private const ushort REL_Y = 0x01;
@@ -121,30 +110,6 @@ public class DrmUnifiedInputBackend : IInputBackend
         public int resolution;
     }
 
-    private sealed class AxisCalibration
-    {
-        public int Min;
-        public int Max;
-        public bool HasKernelRange;
-        public bool HasObservation;
-
-        public void UpdateObservation(int raw)
-        {
-            if (!HasObservation)
-            {
-                Min = raw;
-                Max = raw;
-                HasObservation = true;
-                return;
-            }
-
-            if (raw < Min) Min = raw;
-            if (raw > Max) Max = raw;
-        }
-
-        public int Span => Max - Min;
-    }
-
     private sealed class DeviceInputState
     {
         public string Path { get; init; } = string.Empty;
@@ -152,12 +117,35 @@ public class DrmUnifiedInputBackend : IInputBackend
         public AxisCalibration AbsY { get; } = new();
         public AxisCalibration MtX { get; } = new();
         public AxisCalibration MtY { get; } = new();
+        public SynDroppedGate SyncGate { get; } = new();
         public bool PreferMtAxes { get; set; }
         public bool HasTrackingId { get; set; }
         public bool IsKeyboardCapable { get; set; }
         public bool KeyboardCapableLogged { get; set; }
+
+        // Per-device touch gesture state (kept per device so two touch devices
+        // cannot corrupt each other's gesture tracking).
         public bool TouchDown { get; set; }
         public long TouchId { get; set; }
+        public bool TouchPendingBegin { get; set; }
+        public bool TouchPendingEnd { get; set; }
+        public bool TouchHasStartPos { get; set; }
+        public Point TouchStartPos { get; set; }
+        public Point TouchLastPos { get; set; }
+        public ulong TouchStartTimestamp { get; set; }
+        public bool TouchExceededTapDistance { get; set; }
+
+        // Coordinates accumulated within the current evdev packet, committed on SYN_REPORT.
+        public bool PendingAbsolutePosition { get; set; }
+        public double PendingCursorX { get; set; }
+        public double PendingCursorY { get; set; }
+
+        public void ResetFrameState()
+        {
+            PendingAbsolutePosition = false;
+            TouchPendingBegin = false;
+            TouchPendingEnd = false;
+        }
     }
 
     private static readonly int InputEventSize = Marshal.SizeOf<InputEvent>();
@@ -175,7 +163,8 @@ public class DrmUnifiedInputBackend : IInputBackend
     public DrmUnifiedInputBackend(DrmKeyboardOptions keyboardOptions, DrmTouchOptions? touchOptions)
     {
         var options = keyboardOptions ?? new DrmKeyboardOptions();
-        _touchOptions = touchOptions ?? new DrmTouchOptions();
+        _touchOptions = DrmTouchOptions.WithEnvironmentOverrides(touchOptions);
+        ValidateAxisOverrides(_touchOptions);
         _xkb = new XkbKeyboardProcessor(options);
         _useRoutedControlKeys = options.UseRoutedControlKeys;
         _enableRawControlKeysFallback = options.EnableRawControlKeysFallback;
@@ -304,6 +293,19 @@ public class DrmUnifiedInputBackend : IInputBackend
         if (root is null || handler is null)
             return;
 
+        switch (device.SyncGate.Process(ev.type, ev.code))
+        {
+            case SynGateAction.EnterDropped:
+                // The kernel dropped events: the packet in progress is incomplete.
+                // Discard partial frame state and ignore everything up to and
+                // including the next SYN_REPORT (standard evdev resync).
+                HandleSynDropped(ev, root, handler, device);
+                return;
+
+            case SynGateAction.Drop:
+                return;
+        }
+
         switch (ev.type)
         {
             case EV_REL:
@@ -319,10 +321,31 @@ public class DrmUnifiedInputBackend : IInputBackend
                 break;
 
             case EV_SYN:
-                HandleSyncEvent(ev, root, handler);
+                // Only SYN_REPORT reaches this point (the gate filters other SYN codes).
+                HandleSyncEvent(ev, root, handler, device);
                 break;
             default:
                 break;
+        }
+    }
+
+    private void HandleSynDropped(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
+    {
+        lock (_sync)
+        {
+            if (_debugInput)
+                Console.WriteLine($"[DrmKit][input] SYN_DROPPED on {device.Path}: resyncing, discarding partial frame state.");
+
+            device.ResetFrameState();
+
+            if (device.TouchDown)
+            {
+                // We may have missed the lift; cancel the gesture so the touch
+                // cannot get stuck down. The next contact begins cleanly.
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
+                device.TouchDown = false;
+                device.TouchHasStartPos = false;
+            }
         }
     }
 
@@ -360,56 +383,114 @@ public class DrmUnifiedInputBackend : IInputBackend
                     if (device.PreferMtAxes)
                         break;
 
-                    device.AbsX.UpdateObservation(ev.value);
-                    QueueAbsoluteX(MapAbsoluteToScreen(ev.value, device.AbsX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0)));
+                    HandleAbsolutePosition(device, device.AbsX, rawAxisIsX: true, ev.value);
                     break;
 
                 case ABS_Y:
                     if (device.PreferMtAxes)
                         break;
 
-                    device.AbsY.UpdateObservation(ev.value);
-                    QueueAbsoluteY(MapAbsoluteToScreen(ev.value, device.AbsY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0)));
+                    HandleAbsolutePosition(device, device.AbsY, rawAxisIsX: false, ev.value);
                     break;
 
                 case ABS_MT_POSITION_X:
                     device.PreferMtAxes = true;
-                    device.MtX.UpdateObservation(ev.value);
-                    QueueAbsoluteX(MapAbsoluteToScreen(ev.value, device.MtX, (int)Math.Round(_screen?.ScaledSize.Width ?? 0)));
+                    HandleAbsolutePosition(device, device.MtX, rawAxisIsX: true, ev.value);
                     break;
 
                 case ABS_MT_POSITION_Y:
                     device.PreferMtAxes = true;
-                    device.MtY.UpdateObservation(ev.value);
-                    QueueAbsoluteY(MapAbsoluteToScreen(ev.value, device.MtY, (int)Math.Round(_screen?.ScaledSize.Height ?? 0)));
+                    HandleAbsolutePosition(device, device.MtY, rawAxisIsX: false, ev.value);
                     break;
 
                 case ABS_MT_TRACKING_ID:
                     device.HasTrackingId = true;
                     if (ev.value >= 0)
                     {
-                        if (_touchDown || _touchPendingBegin)
+                        if (device.TouchDown || device.TouchPendingBegin)
                         {
                             if (_debugInput)
                                 Console.WriteLine($"[DrmKit][input][touch] ignoring extra contact trackingId={ev.value} (single-touch mode)");
                             break;
                         }
 
-                        _touchId = ev.value;
-                        _touchPendingBegin = true;
-                        _touchPendingEnd = false;
-                        _touchExceededTapDistance = false;
+                        device.TouchId = ev.value;
+                        device.TouchPendingBegin = true;
+                        device.TouchPendingEnd = false;
+                        device.TouchExceededTapDistance = false;
                     }
-                    else if (ev.value < 0 && (_touchDown || _touchPendingBegin))
+                    else if (ev.value < 0 && (device.TouchDown || device.TouchPendingBegin))
                     {
-                        _touchPendingEnd = true;
+                        device.TouchPendingEnd = true;
                     }
                     break;
             }
         }
     }
 
-    private void HandleSyncEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
+    private void HandleAbsolutePosition(DeviceInputState device, AxisCalibration axis, bool rawAxisIsX, int raw)
+    {
+        axis.UpdateObservation(raw);
+
+        var targetsScreenX = TouchCoordinateMapper.TargetsScreenX(rawAxisIsX, _touchOptions.SwapXY);
+        var size = _screen?.ScaledSize ?? default;
+        var screenSize = (int)Math.Round(targetsScreenX ? size.Width : size.Height);
+        var invert = targetsScreenX ? _touchOptions.InvertX : _touchOptions.InvertY;
+
+        var mapped = TouchCoordinateMapper.Map(raw, axis, screenSize, invert);
+        if (mapped is null)
+        {
+            WarnUncalibratedAxisOnce(device, axis, rawAxisIsX);
+            return;
+        }
+
+        if (targetsScreenX)
+            QueueAbsoluteX(device, mapped.Value);
+        else
+            QueueAbsoluteY(device, mapped.Value);
+    }
+
+    private void WarnUncalibratedAxisOnce(DeviceInputState device, AxisCalibration axis, bool rawAxisIsX)
+    {
+        if (axis.IsCalibrated || axis.WarnedUncalibrated)
+            return;
+
+        axis.WarnedUncalibrated = true;
+        var name = rawAxisIsX ? "X" : "Y";
+        Console.Error.WriteLine(
+            $"[DrmKit][input] {device.Path}: raw {name} axis has no calibration range " +
+            $"(EVIOCGABS unavailable or invalid, no explicit override). Dropping position updates " +
+            $"until a range is known. Set DrmTouchOptions.Abs{name}Min/Abs{name}Max or " +
+            $"DRMKIT_TOUCH_ABS_{name}_MIN/DRMKIT_TOUCH_ABS_{name}_MAX to fix this.");
+    }
+
+    private static void ValidateAxisOverrides(DrmTouchOptions options)
+    {
+        if (!IsValidOverridePair(options.AbsXMin, options.AbsXMax))
+        {
+            Console.Error.WriteLine(
+                $"[DrmKit][input] Ignoring invalid touch X axis override ({Fmt(options.AbsXMin)}..{Fmt(options.AbsXMax)}): " +
+                "both min and max are required and max must be greater than min.");
+            options.AbsXMin = null;
+            options.AbsXMax = null;
+        }
+
+        if (!IsValidOverridePair(options.AbsYMin, options.AbsYMax))
+        {
+            Console.Error.WriteLine(
+                $"[DrmKit][input] Ignoring invalid touch Y axis override ({Fmt(options.AbsYMin)}..{Fmt(options.AbsYMax)}): " +
+                "both min and max are required and max must be greater than min.");
+            options.AbsYMin = null;
+            options.AbsYMax = null;
+        }
+
+        static bool IsValidOverridePair(int? min, int? max)
+            => (min is null && max is null) || (min is not null && max is not null && max.Value > min.Value);
+
+        static string Fmt(int? v) => v?.ToString() ?? "null";
+    }
+
+    private void HandleSyncEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
     {
         lock (_sync)
         {
@@ -417,23 +498,28 @@ public class DrmUnifiedInputBackend : IInputBackend
             var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
             var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
 
-            var hadPendingPosition = _pendingAbsolutePosition;
+            var hadPendingPosition = device.PendingAbsolutePosition;
             var previousPoint = new Point(_cursorX, _cursorY);
-            if (_pendingAbsolutePosition)
+            if (device.PendingAbsolutePosition)
             {
-                _cursorX = _pendingCursorX;
-                _cursorY = _pendingCursorY;
+                _cursorX = device.PendingCursorX;
+                _cursorY = device.PendingCursorY;
                 ClampCursor();
             }
 
             var currentPoint = new Point(_cursorX, _cursorY);
             var absoluteDelta = Distance(previousPoint, currentPoint);
-            var movedFromLastTouch = _touchDown
-                ? Distance(_touchLastPos, currentPoint)
+            var movedFromLastTouch = device.TouchDown
+                ? Distance(device.TouchLastPos, currentPoint)
                 : 0;
+            // The frame that carries the touch end bypasses the jitter threshold so
+            // TouchEnd is preceded by an update at the true final position instead of
+            // a stale point.
+            var isLiftFrame = device.TouchPendingEnd && device.TouchDown;
             var movedEnoughForTouchUpdate = !_touchOptions.EnableTapSwipeSeparation
-                || movedFromLastTouch >= jitterThreshold;
-            var suppressPointerJitter = _touchDown || _touchPendingBegin;
+                || movedFromLastTouch >= jitterThreshold
+                || (isLiftFrame && movedFromLastTouch > 0);
+            var suppressPointerJitter = device.TouchDown || device.TouchPendingBegin;
             var emitPointerMove = hadPendingPosition
                                   && (!suppressPointerJitter
                                       || !_touchOptions.EnableTapSwipeSeparation
@@ -443,59 +529,59 @@ public class DrmUnifiedInputBackend : IInputBackend
                 EmitPointerMove(ev.time, root, handler);
 
             var emittedBegin = false;
-            if (_touchPendingBegin)
+            if (device.TouchPendingBegin)
             {
-                _touchPendingBegin = false;
-                _touchDown = true;
-                _touchStartTimestamp = ToTimestamp(ev.time);
-                _touchStartPos = currentPoint;
-                _touchLastPos = currentPoint;
-                _touchHasStartPos = true;
-                _touchExceededTapDistance = false;
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin);
+                device.TouchPendingBegin = false;
+                device.TouchDown = true;
+                device.TouchStartTimestamp = ToTimestamp(ev.time);
+                device.TouchStartPos = currentPoint;
+                device.TouchLastPos = currentPoint;
+                device.TouchHasStartPos = true;
+                device.TouchExceededTapDistance = false;
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin, currentPoint, device.TouchId);
                 emittedBegin = true;
             }
 
-            if (_touchDown && !emittedBegin && hadPendingPosition && movedEnoughForTouchUpdate)
+            if (device.TouchDown && !emittedBegin && hadPendingPosition && movedEnoughForTouchUpdate)
             {
-                if (_touchHasStartPos)
+                if (device.TouchHasStartPos)
                 {
-                    var totalTravel = Distance(_touchStartPos, currentPoint);
+                    var totalTravel = Distance(device.TouchStartPos, currentPoint);
                     if (totalTravel > tapDistance)
-                        _touchExceededTapDistance = true;
+                        device.TouchExceededTapDistance = true;
                 }
 
-                _touchLastPos = currentPoint;
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate);
+                device.TouchLastPos = currentPoint;
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate, currentPoint, device.TouchId);
             }
 
-            if (_touchPendingEnd && _touchDown)
+            if (device.TouchPendingEnd && device.TouchDown)
             {
-                _touchPendingEnd = false;
+                device.TouchPendingEnd = false;
                 var endTs = ToTimestamp(ev.time);
-                var durationMs = endTs >= _touchStartTimestamp ? (long)(endTs - _touchStartTimestamp) : 0;
-                var totalTravel = _touchHasStartPos ? Distance(_touchStartPos, currentPoint) : 0;
-                var isTap = !_touchExceededTapDistance
+                var durationMs = endTs >= device.TouchStartTimestamp ? (long)(endTs - device.TouchStartTimestamp) : 0;
+                var totalTravel = device.TouchHasStartPos ? Distance(device.TouchStartPos, currentPoint) : 0;
+                var isTap = !device.TouchExceededTapDistance
                             && totalTravel <= tapDistance
                             && durationMs <= tapDurationMs;
 
                 if (_debugInput)
                 {
                     Console.WriteLine(
-                        $"[DrmKit][input][touch] end id={_touchId} tap={isTap} " +
+                        $"[DrmKit][input][touch] end id={device.TouchId} tap={isTap} " +
                         $"distance={totalTravel:0.##} durationMs={durationMs}");
                 }
 
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd);
-                _touchDown = false;
-                _touchHasStartPos = false;
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd, currentPoint, device.TouchId);
+                device.TouchDown = false;
+                device.TouchHasStartPos = false;
             }
-            else if (_touchPendingEnd)
+            else if (device.TouchPendingEnd)
             {
-                _touchPendingEnd = false;
+                device.TouchPendingEnd = false;
             }
 
-            _pendingAbsolutePosition = false;
+            device.PendingAbsolutePosition = false;
         }
     }
 
@@ -518,7 +604,7 @@ public class DrmUnifiedInputBackend : IInputBackend
                 if (device.HasTrackingId)
                     return;
 
-                HandleTouchButton(isDownOrRepeat);
+                HandleTouchButton(device, isDownOrRepeat);
                 return;
             }
 
@@ -648,20 +734,6 @@ public class DrmUnifiedInputBackend : IInputBackend
         return null;
     }
 
-    private static double MapAbsoluteToScreen(int raw, AxisCalibration axis, int screenSize)
-    {
-        if (screenSize <= 1)
-            return 0;
-
-        var min = axis.Min;
-        var max = axis.Max;
-        if (axis.Span <= 0)
-            return Math.Clamp(raw, 0, screenSize - 1);
-
-        var normalized = (raw - min) / (double)(max - min);
-        return Math.Clamp(normalized * (screenSize - 1), 0, screenSize - 1);
-    }
-
     private DeviceInputState CreateDeviceState(string path, FileStream fs)
     {
         var state = new DeviceInputState
@@ -669,10 +741,16 @@ public class DrmUnifiedInputBackend : IInputBackend
             Path = path
         };
 
-        TryReadAbsCalibration(fs, ABS_MT_POSITION_X, state.MtX);
-        TryReadAbsCalibration(fs, ABS_MT_POSITION_Y, state.MtY);
-        TryReadAbsCalibration(fs, ABS_X, state.AbsX);
-        TryReadAbsCalibration(fs, ABS_Y, state.AbsY);
+        // Range precedence: explicit option override → kernel EVIOCGABS → runtime observation.
+        state.MtX.TryApplyOverride(_touchOptions.AbsXMin, _touchOptions.AbsXMax);
+        state.MtY.TryApplyOverride(_touchOptions.AbsYMin, _touchOptions.AbsYMax);
+        state.AbsX.TryApplyOverride(_touchOptions.AbsXMin, _touchOptions.AbsXMax);
+        state.AbsY.TryApplyOverride(_touchOptions.AbsYMin, _touchOptions.AbsYMax);
+
+        TryReadAbsCalibration(fs, ABS_MT_POSITION_X, state.MtX, path);
+        TryReadAbsCalibration(fs, ABS_MT_POSITION_Y, state.MtY, path);
+        TryReadAbsCalibration(fs, ABS_X, state.AbsX, path);
+        TryReadAbsCalibration(fs, ABS_Y, state.AbsY, path);
 
         state.PreferMtAxes = state.MtX.HasKernelRange && state.MtY.HasKernelRange;
 
@@ -691,25 +769,34 @@ public class DrmUnifiedInputBackend : IInputBackend
     }
 
     private static string FormatAxis(AxisCalibration axis)
-        => axis.HasKernelRange ? $"{axis.Min}..{axis.Max}" : "n/a";
+        => axis.HasOverride ? $"{axis.Min}..{axis.Max} (override)"
+            : axis.HasKernelRange ? $"{axis.Min}..{axis.Max}" : "n/a";
 
-    private static void TryReadAbsCalibration(FileStream fs, ushort code, AxisCalibration axis)
+    private void TryReadAbsCalibration(FileStream fs, ushort code, AxisCalibration axis, string path)
     {
+        if (axis.HasOverride)
+            return;
+
         try
         {
             var fd = fs.SafeFileHandle.DangerousGetHandle().ToInt32();
             var request = BuildEviocgabsRequest(code);
             if (ioctl(fd, request, out var abs) == 0 && abs.maximum > abs.minimum)
             {
-                axis.Min = abs.minimum;
-                axis.Max = abs.maximum;
-                axis.HasKernelRange = true;
-                axis.HasObservation = true;
+                axis.SetKernelRange(abs.minimum, abs.maximum);
+            }
+            else if (_debugInput)
+            {
+                Console.WriteLine($"[DrmKit][input] EVIOCGABS(0x{code:X2}) unavailable or invalid on {path}.");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Kernel range probing is optional. Runtime observation fallback will be used.
+            // Kernel range probing is optional; an explicit override or runtime
+            // observation is used instead. Until then, positions are dropped
+            // (see WarnUncalibratedAxisOnce) rather than emitted uncalibrated.
+            if (_debugInput)
+                Console.WriteLine($"[DrmKit][input] EVIOCGABS(0x{code:X2}) failed on {path}: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -774,46 +861,46 @@ public class DrmUnifiedInputBackend : IInputBackend
         Post(handler, args);
     }
 
-    private void HandleTouchButton(bool isDown)
+    private void HandleTouchButton(DeviceInputState device, bool isDown)
     {
         if (isDown)
         {
-            if (_touchDown || _touchPendingBegin)
+            if (device.TouchDown || device.TouchPendingBegin)
                 return;
 
-            _touchId++;
-            _touchPendingBegin = true;
-            _touchPendingEnd = false;
-            _touchExceededTapDistance = false;
+            device.TouchId++;
+            device.TouchPendingBegin = true;
+            device.TouchPendingEnd = false;
+            device.TouchExceededTapDistance = false;
             return;
         }
 
-        if (_touchDown || _touchPendingBegin)
-            _touchPendingEnd = true;
+        if (device.TouchDown || device.TouchPendingBegin)
+            device.TouchPendingEnd = true;
     }
 
-    private void QueueAbsoluteX(double x)
+    private void QueueAbsoluteX(DeviceInputState device, double x)
     {
-        if (!_pendingAbsolutePosition)
+        if (!device.PendingAbsolutePosition)
         {
-            _pendingCursorX = _cursorX;
-            _pendingCursorY = _cursorY;
-            _pendingAbsolutePosition = true;
+            device.PendingCursorX = _cursorX;
+            device.PendingCursorY = _cursorY;
+            device.PendingAbsolutePosition = true;
         }
 
-        _pendingCursorX = x;
+        device.PendingCursorX = x;
     }
 
-    private void QueueAbsoluteY(double y)
+    private void QueueAbsoluteY(DeviceInputState device, double y)
     {
-        if (!_pendingAbsolutePosition)
+        if (!device.PendingAbsolutePosition)
         {
-            _pendingCursorX = _cursorX;
-            _pendingCursorY = _cursorY;
-            _pendingAbsolutePosition = true;
+            device.PendingCursorX = _cursorX;
+            device.PendingCursorY = _cursorY;
+            device.PendingAbsolutePosition = true;
         }
 
-        _pendingCursorY = y;
+        device.PendingCursorY = y;
     }
 
     private void EmitPointerMove(TimeVal time, IInputRoot root, Action<RawInputEventArgs> handler)
@@ -846,18 +933,16 @@ public class DrmUnifiedInputBackend : IInputBackend
         Post(handler, args);
     }
 
-    private void EmitTouch(TimeVal time, IInputRoot root, Action<RawInputEventArgs> handler, RawPointerEventType type)
+    private void EmitTouch(TimeVal time, IInputRoot root, Action<RawInputEventArgs> handler, RawPointerEventType type, Point position, long touchId)
     {
-        ClampCursor();
-
         var args = new RawTouchEventArgs(
             _touch,
             ToTimestamp(time),
             root,
             type,
-            new Point(_cursorX, _cursorY),
+            position,
             RawInputModifiers.None,
-            _touchId);
+            touchId);
 
         Post(handler, args);
     }
