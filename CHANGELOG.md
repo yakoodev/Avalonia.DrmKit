@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
-## [Unreleased]
+## [12.0.5] - 2026-07-09
 ### Added
 - Touch orientation and calibration options in `DrmTouchOptions`:
   - `SwapXY` — swap raw X/Y axes for panels mounted rotated relative to the display.

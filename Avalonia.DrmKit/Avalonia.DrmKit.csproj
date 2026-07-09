@@ -6,7 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
-		<Version>12.0.4</Version>
+		<Version>12.0.5</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 
@@ -32,9 +32,11 @@
 
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReleaseNotes>
-			Update Avalonia dependencies to 12.0.4.
-			Migrate ReactiveUI integration to ReactiveUI.Avalonia.
-			Fix Avalonia 12 API compatibility.
+			Touchscreen improvements: SwapXY/InvertX/InvertY and explicit axis range
+			options in DrmTouchOptions (plus DRMKIT_TOUCH_* env overrides),
+			calibration precedence fix (no more raw-as-pixels fallback),
+			SYN_DROPPED resync with TouchCancel, final touch position on lift,
+			per-device touch state.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
