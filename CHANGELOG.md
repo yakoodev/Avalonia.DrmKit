@@ -4,6 +4,40 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.7] - 2026-07-10
+### Added
+- Multi-contact touch feedback overlay: a semi-transparent circle per active contact appears on
+  `TouchBegin`, follows `TouchUpdate` and fades out (~200 ms, fade + slight scale-up) after
+  `TouchEnd`; `TouchCancel` clears indicators immediately. Theme-agnostic (light disc + brighter
+  ring), attached to the same TopLevel host panel as the soft cursor, near-zero per-frame
+  allocations, and the ~60 Hz animation timer runs only while a fade is in progress.
+  - New `DrmTouchOptions`: `ShowTouchFeedback` (default `true`), `TouchFeedbackSizePx` (44),
+    `TouchFeedbackOpacity` (0.38), with env overrides `DRMKIT_TOUCH_FEEDBACK`,
+    `DRMKIT_TOUCH_FEEDBACK_SIZE`, `DRMKIT_TOUCH_FEEDBACK_OPACITY`.
+- Soft cursor hiding while touching: `HideCursorWhileTouching` (default `true`, env
+  `DRMKIT_TOUCH_HIDE_CURSOR`) hides the soft cursor while any touch contact is active; it
+  reappears on the next real mouse/relative input.
+- `SYN_DROPPED` recovery via `EVIOCGMTSLOTS`: after cancelling all contacts, the kernel per-slot
+  state (tracking ids + positions) is queried and contacts that are physically still down are
+  re-announced as `TouchBegin` at their current positions — held fingers keep working through a
+  resync instead of staying dead until re-touch. On ioctl failure the previous cancel-only
+  behavior applies.
+- `/dev/input` hotplug: an inotify watcher (`IN_CREATE`/`IN_DELETE`/`IN_ATTRIB`, single watcher
+  thread) starts a reader for new `event*` nodes (same init path as startup, including axis
+  calibration, with open retries over ~1 s for permission races) and stops/cleans up readers of
+  removed nodes, cancelling their active contacts. If inotify is unavailable the failure is
+  logged once and the startup device set is kept.
+
+### Changed
+- All events produced by one evdev `SYN_REPORT` frame are dispatched as a single
+  `Dispatcher.UIThread.Post` (in order, Input priority) instead of one post per event; relative
+  mouse motion is accumulated per packet and emitted as one move at the frame boundary (flushed
+  early before button/wheel events so ordering is preserved). Nothing is throttled or dropped.
+
+### Fixed
+- A reader thread whose device node vanished no longer spins on zero-byte reads or logs periodic
+  read errors; it exits cleanly and cancels the device's remaining contacts.
+
 ## [12.0.6] - 2026-07-10
 ### Added
 - Evdev multitouch protocol B support in `DrmUnifiedInputBackend`:

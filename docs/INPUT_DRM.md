@@ -81,10 +81,64 @@ Robustness notes:
 
 - Kernel `SYN_DROPPED` events trigger a standard evdev resync: the partial packet and
   everything up to and including the next `SYN_REPORT` are discarded. An active touch is
-  cancelled so a missed lift cannot leave it stuck down.
+  cancelled so a missed lift cannot leave it stuck down. On multitouch devices the backend
+  then recovers held contacts — see "SYN_DROPPED recovery" below.
 - The frame carrying the touch end bypasses the jitter threshold, so `TouchEnd` always
   fires at the true final finger position.
 - Touch gesture state is tracked per device.
+
+## Touch feedback overlay
+
+Every active touch contact gets a visual indicator: a semi-transparent light circle with a
+brighter ring (theme-agnostic — readable on dark kiosk UIs and light themes alike). It
+appears on `TouchBegin`, follows the finger, and fades out quickly (~200 ms fade +
+slight scale-up) after `TouchEnd`. `TouchCancel` (resync, device removal) removes
+indicators immediately.
+
+| Option | Env variable | Default | Meaning |
+| --- | --- | --- | --- |
+| `ShowTouchFeedback` | `DRMKIT_TOUCH_FEEDBACK` | `true` | Show the per-contact indicator overlay. |
+| `HideCursorWhileTouching` | `DRMKIT_TOUCH_HIDE_CURSOR` | `true` | Hide the soft cursor while any contact is active; it reappears on the next real mouse/relative input. |
+| `TouchFeedbackSizePx` | `DRMKIT_TOUCH_FEEDBACK_SIZE` | `44` | Indicator diameter in pixels. |
+| `TouchFeedbackOpacity` | `DRMKIT_TOUCH_FEEDBACK_OPACITY` | `0.38` | Fill opacity (0..1); the ring is drawn slightly brighter. |
+
+The overlay attaches to the TopLevel that hosts the DRM input root (the same host panel the
+soft cursor uses), is not hit-test visible, and is fully inert when disabled. Its animation
+timer (~60 Hz) runs only while an indicator is fading; steady-state rendering performs no
+per-frame allocations.
+
+## Device hotplug
+
+`/dev/input` is watched with inotify (`IN_CREATE`/`IN_DELETE`/`IN_ATTRIB`) from a single
+background thread:
+
+- A new `event*` node starts a reader thread through the same initialization path as at
+  startup (axis calibration, MT slot probing). Opening retries a few times over ~1 s, since
+  a just-created node may get its permissions from udev a moment later (`IN_ATTRIB`
+  retriggers the attempt).
+- A removed node stops its reader, cleans up its state and cancels its active contacts
+  (`TouchCancel` per contact), so nothing stays stuck down. A reader whose device vanished
+  exits cleanly (no error-log spinning).
+- If inotify cannot be initialized, the failure is logged once and the backend keeps the
+  device set found at startup.
+
+## SYN_DROPPED recovery (EVIOCGMTSLOTS)
+
+When the kernel drops events (`SYN_DROPPED`), contacts the app knows about may be stale, so
+they are all cancelled. On MT protocol B devices the backend then queries the kernel's
+current per-slot state via `EVIOCGMTSLOTS` (`ABS_MT_TRACKING_ID`, `ABS_MT_POSITION_X/Y`)
+and re-announces contacts that are physically still down as `TouchBegin` at their current
+positions — a held finger keeps dragging through a resync instead of going dead until it is
+lifted and re-touched. The cancel + re-begin pair is delivered in one dispatcher batch. If
+the ioctl fails, behavior falls back to cancel-only (as before 12.0.7).
+
+## Event dispatch
+
+All raw events produced by one evdev `SYN_REPORT` frame (e.g. moves/updates of several
+contacts) are posted to the UI thread as a single dispatcher work item and delivered in
+emission order — one post per frame instead of one per event. Relative mouse motion is
+coalesced the same way (one move per packet), with an early flush before button/wheel
+events so ordering is preserved. Nothing is throttled or dropped.
 
 ## Multitouch
 
@@ -106,8 +160,9 @@ WS170120 kiosk panel) get full multi-contact support:
   only while exactly one contact is active. The moment a second contact begins, all
   updates are delivered raw so Avalonia's gesture recognizers (pinch/rotate) receive
   unfiltered points.
-- `SYN_DROPPED` cancels **all** active contacts (`TouchCancel` per contact) and resets
-  slot state before the resync re-arms.
+- `SYN_DROPPED` cancels **all** active contacts (`TouchCancel` per contact), resets slot
+  state, and re-announces physically held contacts from the kernel state (see
+  "SYN_DROPPED recovery" above) before the resync re-arms.
 - Only the first (primary) contact moves the shared soft cursor; secondary contacts
   never warp it.
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
@@ -6,7 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
-		<Version>12.0.6</Version>
+		<Version>12.0.7</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 
@@ -32,13 +32,17 @@
 
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReleaseNotes>
-			Multitouch: evdev MT protocol B support (ABS_MT_SLOT per-slot contact
-			tracking, frame commit on SYN_REPORT, stable per-contact tracking ids).
-			Single-touch emulation is suppressed on MT-slot devices; devices without
-			slots keep the previous single-touch behavior. Jitter/tap filtering
-			applies only while one contact is active so pinch gestures get raw
-			points. SYN_DROPPED cancels all active contacts. Only the primary
-			contact drives the soft cursor.
+			Touch feedback: a visual indicator per active contact (appears on
+			TouchBegin, follows moves, fades out on TouchEnd), enabled by default
+			(DrmTouchOptions.ShowTouchFeedback / DRMKIT_TOUCH_FEEDBACK), plus soft
+			cursor hiding while any contact is active (HideCursorWhileTouching /
+			DRMKIT_TOUCH_HIDE_CURSOR). SYN_DROPPED recovery now re-announces
+			physically held contacts via EVIOCGMTSLOTS instead of leaving them
+			dead until re-touch. /dev/input hotplug via inotify: new event*
+			devices start readers at runtime, removed devices are cleaned up and
+			their contacts cancelled (vanished-device readers exit cleanly).
+			Perf: all events of one evdev SYN_REPORT frame are dispatched as a
+			single UI post, in order.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 
