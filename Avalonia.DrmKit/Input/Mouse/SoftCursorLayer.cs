@@ -9,16 +9,16 @@ using Avalonia.Threading;
 namespace Avalonia.DrmKit.Input
 {
     /// <summary>
-    /// Слой "мягкого" курсора, рисуемый поверх приложения.
+    /// пїЅпїЅпїЅпїЅ "пїЅпїЅпїЅпїЅпїЅпїЅпїЅ" пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
     ///
-    /// Возможности:
-    /// - дефолтный кружок (как раньше);
-    /// - полная кастомизация через Template/Content (текст, картинка, любая фигура);
-    /// - биндинги к позиции курсора: CursorX / CursorY;
-    /// - биндинг к состоянию кнопки: IsPressed;
-    /// - смена цветов через стили (StrokeBrush / FillBrush / PressedFillBrush);
-    /// - дефолтные цвета автоматически подстраиваются под светлую/тёмную тему;
-    /// - авто-скрытие курсора по таймауту с плавным исчезновением (AutoHideDelay).
+    /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ:
+    /// - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ);
+    /// - пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ Template/Content (пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ);
+    /// - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ: CursorX / CursorY;
+    /// - пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: IsPressed;
+    /// - пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ (StrokeBrush / FillBrush / PressedFillBrush);
+    /// - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ;
+    /// - пїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (AutoHideDelay).
     /// </summary>
     public class SoftCursorLayer : ContentControl
     {
@@ -29,13 +29,14 @@ namespace Avalonia.DrmKit.Input
         private double _cursorY;
         private bool _isPressed;
         private bool _isCursorVisible;
+        private bool _touchSuppressed;
 
         private DispatcherTimer? _idleTimer;
         private DispatcherTimer? _fadeTimer;
         private DateTimeOffset _fadeStart;
         private static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(250);
 
-        // Позиция курсора — для биндингов в шаблоне
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         public static readonly DirectProperty<SoftCursorLayer, double> CursorXProperty =
             AvaloniaProperty.RegisterDirect<SoftCursorLayer, double>(
                 nameof(CursorX),
@@ -52,9 +53,9 @@ namespace Avalonia.DrmKit.Input
                 o => o.IsPressed);
 
         /// <summary>
-        /// Текущая логическая видимость курсора.
-        /// true — курсор считается видимым (даже если он находится в фазе "затухания"),
-        /// false — полностью скрыт.
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
+        /// true пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ"),
+        /// false пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.
         /// </summary>
         public static readonly DirectProperty<SoftCursorLayer, bool> IsCursorVisibleProperty =
             AvaloniaProperty.RegisterDirect<SoftCursorLayer, bool>(
@@ -62,9 +63,9 @@ namespace Avalonia.DrmKit.Input
                 o => o.IsCursorVisible);
 
         /// <summary>
-        /// Таймаут простоя, после которого курсор будет автоматически скрыт.
-        /// 0 или отрицательное значение — авто-скрытие отключено.
-        /// Значение по умолчанию: 3 секунды.
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.
+        /// 0 пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: 3 пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
         /// </summary>
         public static readonly StyledProperty<TimeSpan> AutoHideDelayProperty =
             AvaloniaProperty.Register<SoftCursorLayer, TimeSpan>(
@@ -72,8 +73,8 @@ namespace Avalonia.DrmKit.Input
                 defaultValue: TimeSpan.FromSeconds(3));
 
         /// <summary>
-        /// Если true — дефолтный кружок не рисуется вообще.
-        /// Нужен, когда вы хотите полностью заменить визуал через Template/Content.
+        /// пїЅпїЅпїЅпїЅ true пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.
+        /// пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ Template/Content.
         /// </summary>
         public static readonly StyledProperty<bool> DisableDefaultRenderingProperty =
             AvaloniaProperty.Register<SoftCursorLayer, bool>(nameof(DisableDefaultRendering));
@@ -114,22 +115,22 @@ namespace Avalonia.DrmKit.Input
             set => SetValue(AutoHideDelayProperty, value);
         }
 
-        // --- Стилизуемые кисти для дефолтного кружка ---
+        // --- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ ---
 
         /// <summary>
-        /// Кисть контура курсора (если не задано — подбирается по теме).
+        /// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ).
         /// </summary>
         public static readonly StyledProperty<IBrush?> StrokeBrushProperty =
             AvaloniaProperty.Register<SoftCursorLayer, IBrush?>(nameof(StrokeBrush));
 
         /// <summary>
-        /// Кисть заливки курсора в обычном состоянии (если не задано — подбирается по теме).
+        /// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ).
         /// </summary>
         public static readonly StyledProperty<IBrush?> FillBrushProperty =
             AvaloniaProperty.Register<SoftCursorLayer, IBrush?>(nameof(FillBrush));
 
         /// <summary>
-        /// Кисть заливки курсора при нажатой кнопке (если не задано — подбирается по теме).
+        /// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ).
         /// </summary>
         public static readonly StyledProperty<IBrush?> PressedFillBrushProperty =
             AvaloniaProperty.Register<SoftCursorLayer, IBrush?>(nameof(PressedFillBrush));
@@ -152,7 +153,7 @@ namespace Avalonia.DrmKit.Input
             set => SetValue(PressedFillBrushProperty, value);
         }
 
-        // Кэш дефолтных кистей под конкретную тему
+        // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
         private IBrush? _defaultStroke;
         private IBrush? _defaultFill;
         private IBrush? _defaultPressedFill;
@@ -166,13 +167,13 @@ namespace Avalonia.DrmKit.Input
             IsHitTestVisible = false;
             Focusable = false;
 
-            // Изначально курсор скрыт, пока пользователь не "шевельнёт" мышь.
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ "пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ" пїЅпїЅпїЅпїЅ.
             IsCursorVisible = false;
             Opacity = 0.0;
         }
 
         /// <summary>
-        /// Обновление позиции курсора (вызывается из EvdevMouseListener и PointerMoved TopLevel'а).
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ EvdevMouseListener пїЅ PointerMoved TopLevel'пїЅ).
         /// </summary>
         public void UpdatePosition(Point p)
         {
@@ -183,7 +184,7 @@ namespace Avalonia.DrmKit.Input
         }
 
         /// <summary>
-        /// Обновление состояния кнопки мыши.
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ.
         /// </summary>
         public void SetPressed(bool pressed)
         {
@@ -193,18 +194,44 @@ namespace Avalonia.DrmKit.Input
         }
 
         /// <summary>
-        /// Любая активность (движение/клик) — показать курсор и перезапустить таймер простоя.
+        /// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅ) пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
         /// </summary>
+        /// <summary>
+        /// Suppresses the cursor while a touch contact is active
+        /// (DrmTouchOptions.HideCursorWhileTouching). While suppressed the
+        /// cursor is hidden immediately and activity does not re-show it; when
+        /// suppression ends the cursor stays hidden until the next real
+        /// mouse/relative input triggers activity again.
+        /// </summary>
+        public void SetTouchSuppressed(bool suppressed)
+        {
+            if (_touchSuppressed == suppressed)
+                return;
+
+            _touchSuppressed = suppressed;
+
+            if (suppressed)
+            {
+                _idleTimer?.Stop();
+                _fadeTimer?.Stop();
+                Opacity = 0.0;
+                IsCursorVisible = false;
+            }
+        }
+
         private void NotifyActivity()
         {
-            // Показать курсор немедленно
+            if (_touchSuppressed)
+                return;
+
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             if (!IsCursorVisible || Opacity < 1.0)
             {
                 IsCursorVisible = true;
                 Opacity = 1.0;
             }
 
-            // Остановить текущий fade, если он был
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ fade, пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅ
             _fadeTimer?.Stop();
 
             var delay = AutoHideDelay;
@@ -276,7 +303,7 @@ namespace Avalonia.DrmKit.Input
         {
             base.OnPropertyChanged(change);
 
-            // При смене темы — пересоздаём дефолтные кисти
+            // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
             if (change.Property == ThemeVariantScope.ActualThemeVariantProperty)
             {
                 _defaultStroke = _defaultFill = _defaultPressedFill = null;
@@ -284,7 +311,7 @@ namespace Avalonia.DrmKit.Input
                 InvalidateVisual();
             }
 
-            // При смене пользовательских кистей — перерисовываем
+            // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             if (change.Property == StrokeBrushProperty ||
                 change.Property == FillBrushProperty ||
                 change.Property == PressedFillBrushProperty)
@@ -294,16 +321,16 @@ namespace Avalonia.DrmKit.Input
 
             if (change.Property == AutoHideDelayProperty)
             {
-                // При выключении авто-скрытия просто останавливаем таймеры.
+                // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
                 if (AutoHideDelay <= TimeSpan.Zero)
                 {
                     _idleTimer?.Stop();
                     _fadeTimer?.Stop();
-                    // Курсор будет управляться только активностью.
+                    // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
                 }
                 else
                 {
-                    // Если курсор уже видим — перезапустим ожидание.
+                    // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
                     if (IsCursorVisible)
                         NotifyActivity();
                 }
@@ -314,15 +341,15 @@ namespace Avalonia.DrmKit.Input
         {
             base.Render(context);
 
-            // Если пользователь полностью переопределяет визуал:
-            // - он может задать Template/Content;
-            // - и выставить DisableDefaultRendering = true, чтобы не рисовать кружок.
+            // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ:
+            // - пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Template/Content;
+            // - пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ DisableDefaultRendering = true, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.
             if (DisableDefaultRendering)
                 return;
 
-            // Если пользователь задал Content/Template и не хочет дефолтный кружок —
-            // он выставит DisableDefaultRendering=true в стиле.
-            // По умолчанию кружок остаётся, чтобы не ломать старое поведение.
+            // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ Content/Template пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ
+            // пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ DisableDefaultRendering=true пїЅ пїЅпїЅпїЅпїЅпїЅ.
+            // пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
             if (Content is not null)
                 return;
 
@@ -343,7 +370,7 @@ namespace Avalonia.DrmKit.Input
         }
 
         /// <summary>
-        /// Подбирает дефолтные кисти под текущую тему (светлая/тёмная).
+        /// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅ).
         /// </summary>
         private void EnsureDefaultBrushes()
         {
@@ -359,14 +386,14 @@ namespace Avalonia.DrmKit.Input
 
             _defaultFill = new SolidColorBrush(
                 isDark
-                    ? Color.FromArgb(160, 0, 0, 0)      // тёмная полупрозрачная "пипка" на тёмной теме
-                    : Color.FromArgb(230, 255, 255, 255) // почти белый круг на светлой теме
+                    ? Color.FromArgb(160, 0, 0, 0)      // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ "пїЅпїЅпїЅпїЅпїЅ" пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+                    : Color.FromArgb(230, 255, 255, 255) // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
             );
 
             _defaultPressedFill = new SolidColorBrush(
                 isDark
-                    ? Color.FromArgb(192, 255, 255, 255) // при нажатии светлее на тёмной теме
-                    : Color.FromArgb(200, 200, 200, 200) // при нажатии чуть темнее на светлой теме
+                    ? Color.FromArgb(192, 255, 255, 255) // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+                    : Color.FromArgb(200, 200, 200, 200) // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
             );
         }
     }

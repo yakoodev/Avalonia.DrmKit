@@ -88,4 +88,51 @@ public class DrmTouchOptionsEnvTests
         Assert.True(options.SwapXY);
         Assert.Equal(42, options.AbsXMin);
     }
+
+    [Fact]
+    public void Touch_feedback_defaults_are_enabled()
+    {
+        var options = new DrmTouchOptions();
+
+        Assert.True(options.ShowTouchFeedback);
+        Assert.True(options.HideCursorWhileTouching);
+        Assert.Equal(44, options.TouchFeedbackSizePx);
+        Assert.Equal(0.38, options.TouchFeedbackOpacity);
+    }
+
+    [Fact]
+    public void Touch_feedback_env_vars_override_code_configuration()
+    {
+        var options = new DrmTouchOptions();
+
+        DrmTouchOptions.ApplyOverrides(options, Env(new Dictionary<string, string?>
+        {
+            ["DRMKIT_TOUCH_FEEDBACK"] = "0",
+            ["DRMKIT_TOUCH_HIDE_CURSOR"] = "off",
+            ["DRMKIT_TOUCH_FEEDBACK_SIZE"] = "60.5",
+            ["DRMKIT_TOUCH_FEEDBACK_OPACITY"] = "0.25"
+        }));
+
+        Assert.False(options.ShowTouchFeedback);
+        Assert.False(options.HideCursorWhileTouching);
+        Assert.Equal(60.5, options.TouchFeedbackSizePx);
+        Assert.Equal(0.25, options.TouchFeedbackOpacity);
+    }
+
+    [Fact]
+    public void Invalid_touch_feedback_values_are_ignored()
+    {
+        var options = new DrmTouchOptions();
+
+        DrmTouchOptions.ApplyOverrides(options, Env(new Dictionary<string, string?>
+        {
+            ["DRMKIT_TOUCH_FEEDBACK"] = "maybe",
+            ["DRMKIT_TOUCH_FEEDBACK_SIZE"] = "-10",
+            ["DRMKIT_TOUCH_FEEDBACK_OPACITY"] = "1.5"
+        }));
+
+        Assert.True(options.ShowTouchFeedback);
+        Assert.Equal(44, options.TouchFeedbackSizePx);
+        Assert.Equal(0.38, options.TouchFeedbackOpacity);
+    }
 }

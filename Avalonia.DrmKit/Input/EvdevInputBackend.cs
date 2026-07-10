@@ -31,6 +31,7 @@ public class DrmUnifiedInputBackend : IInputBackend
     private readonly bool _tabAsNavigation;
     private readonly bool _enterAsTextFallback;
     private readonly DrmTouchOptions _touchOptions;
+    private readonly bool _notifyTouchFeedback;
 
     private IScreenInfoProvider? _screen;
     private IInputRoot? _inputRoot;
@@ -184,6 +185,8 @@ public class DrmUnifiedInputBackend : IInputBackend
         _enableRawControlKeysFallback = options.EnableRawControlKeysFallback;
         _tabAsNavigation = options.TabAsNavigation;
         _enterAsTextFallback = options.EnterAsTextFallback;
+        _notifyTouchFeedback = _touchOptions.ShowTouchFeedback || _touchOptions.HideCursorWhileTouching;
+        TouchFeedbackHub.Configure(_touchOptions.HideCursorWhileTouching);
         if (OperatingSystem.IsLinux() && !_xkb.IsAvailable)
             Console.Error.WriteLine("[DrmKit][input] xkbcommon is unavailable. Keyboard text input will use limited fallback.");
     }
@@ -229,6 +232,9 @@ public class DrmUnifiedInputBackend : IInputBackend
     public void SetInputRoot(IInputRoot inputRoot)
     {
         _inputRoot = inputRoot;
+
+        if (_touchOptions.ShowTouchFeedback)
+            TouchFeedbackInstaller.ScheduleAttach(inputRoot, _touchOptions);
     }
 
     private static IEnumerable<string> EnumerateEventDevices()
@@ -1205,6 +1211,19 @@ public class DrmUnifiedInputBackend : IInputBackend
         Post(handler, args);
     }
 
+    /// <summary>
+    /// Runs one raw event through the handler on the UI thread, notifying the
+    /// touch feedback pipeline (indicator overlay + soft-cursor hiding) for
+    /// touch events first. Fully inert when both feedback options are disabled.
+    /// </summary>
+    private void Deliver(Action<RawInputEventArgs> handler, RawInputEventArgs args)
+    {
+        if (_notifyTouchFeedback && args is RawTouchEventArgs touch)
+            TouchFeedbackHub.Notify(touch.RawPointerId, touch.Type, touch.Position);
+
+        handler(args);
+    }
+
     private static double Distance(Point a, Point b)
     {
         var dx = a.X - b.X;
@@ -1501,9 +1520,9 @@ public class DrmUnifiedInputBackend : IInputBackend
         };
     }
 
-    private static void Post(Action<RawInputEventArgs> handler, RawInputEventArgs args)
+    private void Post(Action<RawInputEventArgs> handler, RawInputEventArgs args)
     {
-        Dispatcher.UIThread.Post(() => handler(args), DispatcherPriority.Input);
+        Dispatcher.UIThread.Post(() => Deliver(handler, args), DispatcherPriority.Input);
     }
 }
 

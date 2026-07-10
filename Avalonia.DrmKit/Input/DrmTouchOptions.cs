@@ -75,6 +75,34 @@ public sealed class DrmTouchOptions
     public int? AbsYMax { get; set; }
 
     /// <summary>
+    /// Shows a visual indicator (semi-transparent circle) at every active touch
+    /// contact: it appears on TouchBegin, follows TouchUpdate and fades out
+    /// quickly after TouchEnd. Enabled by default.
+    /// Environment override: <c>DRMKIT_TOUCH_FEEDBACK</c> (0/1).
+    /// </summary>
+    public bool ShowTouchFeedback { get; set; } = true;
+
+    /// <summary>
+    /// Hides the soft cursor (arrow) while any touch contact is active. The
+    /// cursor reappears on the next real mouse/relative input. Enabled by default.
+    /// Environment override: <c>DRMKIT_TOUCH_HIDE_CURSOR</c> (0/1).
+    /// </summary>
+    public bool HideCursorWhileTouching { get; set; } = true;
+
+    /// <summary>
+    /// Diameter (in pixels) of the touch feedback indicator.
+    /// Environment override: <c>DRMKIT_TOUCH_FEEDBACK_SIZE</c>.
+    /// </summary>
+    public double TouchFeedbackSizePx { get; set; } = 44;
+
+    /// <summary>
+    /// Fill opacity (0..1) of the touch feedback indicator. The ring border is
+    /// drawn slightly brighter automatically.
+    /// Environment override: <c>DRMKIT_TOUCH_FEEDBACK_OPACITY</c>.
+    /// </summary>
+    public double TouchFeedbackOpacity { get; set; } = 0.38;
+
+    /// <summary>
     /// Applies <c>DRMKIT_TOUCH_*</c> environment variable overrides on top of
     /// <paramref name="options"/> (a new instance is created when null) and returns it.
     /// Environment variables always win over values set in code, which allows
@@ -101,6 +129,16 @@ public sealed class DrmTouchOptions
         if (TryParseInt(getEnv("DRMKIT_TOUCH_ABS_Y_MAX"), out var yMax))
             options.AbsYMax = yMax;
 
+        if (TryParseBool(getEnv("DRMKIT_TOUCH_FEEDBACK"), out var feedback))
+            options.ShowTouchFeedback = feedback;
+        if (TryParseBool(getEnv("DRMKIT_TOUCH_HIDE_CURSOR"), out var hideCursor))
+            options.HideCursorWhileTouching = hideCursor;
+        if (TryParseDouble(getEnv("DRMKIT_TOUCH_FEEDBACK_SIZE"), out var feedbackSize) && feedbackSize > 0)
+            options.TouchFeedbackSizePx = feedbackSize;
+        if (TryParseDouble(getEnv("DRMKIT_TOUCH_FEEDBACK_OPACITY"), out var feedbackOpacity)
+            && feedbackOpacity >= 0 && feedbackOpacity <= 1)
+            options.TouchFeedbackOpacity = feedbackOpacity;
+
         return options;
     }
 
@@ -122,4 +160,11 @@ public sealed class DrmTouchOptions
 
     private static bool TryParseInt(string? raw, out int value)
         => int.TryParse(raw?.Trim(), out value);
+
+    private static bool TryParseDouble(string? raw, out double value)
+        => double.TryParse(
+            raw?.Trim(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out value);
 }

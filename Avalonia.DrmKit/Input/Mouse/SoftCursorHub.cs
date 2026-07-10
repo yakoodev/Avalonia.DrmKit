@@ -29,5 +29,17 @@ namespace Avalonia.DrmKit.Input
                 try { kv.Value.SetPressed(pressed); } catch { }
             }
         }
+
+        /// <summary>
+        /// Hides/releases every soft cursor while a touch contact is active
+        /// (see <see cref="SoftCursorLayer.SetTouchSuppressed"/>).
+        /// </summary>
+        public static void SetTouchSuppressed(bool suppressed)
+        {
+            foreach (var kv in _layers)
+            {
+                try { kv.Value.SetTouchSuppressed(suppressed); } catch { }
+            }
+        }
     }
 }
