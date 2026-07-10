@@ -6,7 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
-		<Version>12.0.5</Version>
+		<Version>12.0.6</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 
@@ -32,11 +32,13 @@
 
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReleaseNotes>
-			Touchscreen improvements: SwapXY/InvertX/InvertY and explicit axis range
-			options in DrmTouchOptions (plus DRMKIT_TOUCH_* env overrides),
-			calibration precedence fix (no more raw-as-pixels fallback),
-			SYN_DROPPED resync with TouchCancel, final touch position on lift,
-			per-device touch state.
+			Multitouch: evdev MT protocol B support (ABS_MT_SLOT per-slot contact
+			tracking, frame commit on SYN_REPORT, stable per-contact tracking ids).
+			Single-touch emulation is suppressed on MT-slot devices; devices without
+			slots keep the previous single-touch behavior. Jitter/tap filtering
+			applies only while one contact is active so pinch gestures get raw
+			points. SYN_DROPPED cancels all active contacts. Only the primary
+			contact drives the soft cursor.
 		</PackageReleaseNotes>
 	</PropertyGroup>
 

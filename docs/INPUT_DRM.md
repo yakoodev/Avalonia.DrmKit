@@ -85,8 +85,31 @@ Robustness notes:
 - The frame carrying the touch end bypasses the jitter threshold, so `TouchEnd` always
   fires at the true final finger position.
 - Touch gesture state is tracked per device.
-- Multitouch is single-contact: extra MT contacts are ignored (MT protocol B slots are a
-  planned follow-up).
+
+## Multitouch
+
+Devices reporting evdev multitouch **protocol B** (`ABS_MT_SLOT`, e.g. the WaveShare
+WS170120 kiosk panel) get full multi-contact support:
+
+- Contacts are tracked per slot. `ABS_MT_SLOT` switches the current slot,
+  `ABS_MT_TRACKING_ID >= 0` begins a contact (-1 ends it), `ABS_MT_POSITION_X/Y` update it.
+  All changes are buffered and committed on `SYN_REPORT`, one touch event per changed
+  contact (`TouchBegin`/`TouchUpdate`/`TouchEnd`). The Avalonia touch point id is the
+  kernel tracking id, stable for the contact's lifetime.
+- Slot capacity comes from `EVIOCGABS(ABS_MT_SLOT)` (maximum + 1); if the ioctl reports
+  nothing, protocol B is detected from the first `ABS_MT_SLOT` event with a fallback of
+  10 slots (growing on demand).
+- Single-touch emulation (`ABS_X`/`ABS_Y`/`BTN_TOUCH`) is ignored on MT-slot devices —
+  it duplicates the first contact. Devices **without** `ABS_MT_SLOT` keep the plain
+  single-touch path described above.
+- Gesture passthrough: tap classification and `MoveJitterThresholdPx` suppression apply
+  only while exactly one contact is active. The moment a second contact begins, all
+  updates are delivered raw so Avalonia's gesture recognizers (pinch/rotate) receive
+  unfiltered points.
+- `SYN_DROPPED` cancels **all** active contacts (`TouchCancel` per contact) and resets
+  slot state before the resync re-arms.
+- Only the first (primary) contact moves the shared soft cursor; secondary contacts
+  never warp it.
 
 ## On-screen keyboard (`KeyboardOverlay`) behavior
 

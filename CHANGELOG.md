@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.6] - 2026-07-10
+### Added
+- Evdev multitouch protocol B support in `DrmUnifiedInputBackend`:
+  - Per-slot contact tracking (`ABS_MT_SLOT`, `ABS_MT_TRACKING_ID`, `ABS_MT_POSITION_X/Y`),
+    buffered per evdev packet and committed on `SYN_REPORT` as `TouchBegin`/`TouchUpdate`/`TouchEnd`
+    with stable per-contact ids (kernel tracking ids). MT axes use their own calibration and the
+    existing `SwapXY`/`InvertX`/`InvertY` mapping; the uncalibrated-axis drop rule applies per axis.
+  - Slot capacity is read from `EVIOCGABS(ABS_MT_SLOT)` (maximum + 1), with a fallback of 10 slots
+    (growing on demand) when the ioctl reports nothing and protocol B is detected at runtime.
+  - Single-touch emulation events (`ABS_X`/`ABS_Y`/`BTN_TOUCH`) are ignored on devices that report
+    MT slots — they duplicate the first contact. Devices without `ABS_MT_SLOT` keep the previous
+    single-touch behavior unchanged (tap/swipe/jitter logic included).
+  - Tap classification and move-jitter suppression apply only while exactly one contact is active;
+    from the moment a second contact begins, updates are delivered raw so Avalonia's pinch/gesture
+    recognizers receive unfiltered points. The final position is still flushed before `TouchEnd`.
+  - `SYN_DROPPED` resync now cancels **all** active contacts (`TouchCancel` per contact) and resets
+    the slot state before re-arming.
+  - Only the first (primary) contact drives the shared soft-cursor position; secondary contacts
+    never warp it.
+- `MultiTouchSlotTracker` unit tests: two-finger sequences, mid-frame slot switching, tracking id
+  reuse, single-slot frames, `SYN_DROPPED` cancellation, slot-count fallback and growth, deferred
+  begin, lift-frame position flush, primary-contact rules.
+
 ## [12.0.5] - 2026-07-09
 ### Added
 - Touch orientation and calibration options in `DrmTouchOptions`:
