@@ -73,6 +73,7 @@ public class DrmUnifiedInputBackend : IInputBackend
 
     private const ushort ABS_X = 0x00;
     private const ushort ABS_Y = 0x01;
+    private const ushort ABS_MT_SLOT = 0x2f;
     private const ushort ABS_MT_POSITION_X = 0x35;
     private const ushort ABS_MT_POSITION_Y = 0x36;
     private const ushort ABS_MT_TRACKING_ID = 0x39;
@@ -120,6 +121,19 @@ public class DrmUnifiedInputBackend : IInputBackend
         public SynDroppedGate SyncGate { get; } = new();
         public bool PreferMtAxes { get; set; }
         public bool HasTrackingId { get; set; }
+
+        // Multitouch protocol B slot state; null until the device reports MT slots
+        // (EVIOCGABS(ABS_MT_SLOT) range at open, or a runtime ABS_MT_SLOT event).
+        public MultiTouchSlotTracker? SlotTracker { get; set; }
+
+        // Jitter/tap gesture tracking for the sole MT contact. Only meaningful
+        // while exactly one contact has been active since its Begin; -1 means
+        // raw delivery (multi-contact gesture in progress).
+        public int MtGestureSlot { get; set; } = -1;
+        public Point MtGestureStartPos { get; set; }
+        public Point MtGestureLastPos { get; set; }
+        public ulong MtGestureStartTimestamp { get; set; }
+        public bool MtGestureExceededTapDistance { get; set; }
         public bool IsKeyboardCapable { get; set; }
         public bool KeyboardCapableLogged { get; set; }
 
@@ -338,6 +352,20 @@ public class DrmUnifiedInputBackend : IInputBackend
 
             device.ResetFrameState();
 
+            if (device.SlotTracker is { } tracker)
+            {
+                // We may have missed lifts and slot changes; cancel every contact
+                // downstream knows about and reset the slot state. The gate re-arms
+                // after the next full frame and new contacts begin cleanly.
+                foreach (var contact in tracker.CancelAll())
+                {
+                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel,
+                        new Point(contact.X, contact.Y), contact.TrackingId);
+                }
+
+                device.MtGestureSlot = -1;
+            }
+
             if (device.TouchDown)
             {
                 // We may have missed the lift; cancel the gesture so the touch
@@ -380,31 +408,49 @@ public class DrmUnifiedInputBackend : IInputBackend
             switch (ev.code)
             {
                 case ABS_X:
-                    if (device.PreferMtAxes)
+                    // MT-slot devices duplicate contact 0 through the single-touch
+                    // emulation axes; ignore them so the contact is not doubled.
+                    if (MultiTouchSlotTracker.SuppressesSingleTouchEmulation(device.SlotTracker) || device.PreferMtAxes)
                         break;
 
                     HandleAbsolutePosition(device, device.AbsX, rawAxisIsX: true, ev.value);
                     break;
 
                 case ABS_Y:
-                    if (device.PreferMtAxes)
+                    if (MultiTouchSlotTracker.SuppressesSingleTouchEmulation(device.SlotTracker) || device.PreferMtAxes)
                         break;
 
                     HandleAbsolutePosition(device, device.AbsY, rawAxisIsX: false, ev.value);
                     break;
 
+                case ABS_MT_SLOT:
+                    GetOrCreateSlotTracker(ev, root, handler, device).SelectSlot(ev.value);
+                    break;
+
                 case ABS_MT_POSITION_X:
                     device.PreferMtAxes = true;
-                    HandleAbsolutePosition(device, device.MtX, rawAxisIsX: true, ev.value);
+                    if (device.SlotTracker is { } trackerX)
+                        HandleMtPosition(device, trackerX, device.MtX, rawAxisIsX: true, ev.value);
+                    else
+                        HandleAbsolutePosition(device, device.MtX, rawAxisIsX: true, ev.value);
                     break;
 
                 case ABS_MT_POSITION_Y:
                     device.PreferMtAxes = true;
-                    HandleAbsolutePosition(device, device.MtY, rawAxisIsX: false, ev.value);
+                    if (device.SlotTracker is { } trackerY)
+                        HandleMtPosition(device, trackerY, device.MtY, rawAxisIsX: false, ev.value);
+                    else
+                        HandleAbsolutePosition(device, device.MtY, rawAxisIsX: false, ev.value);
                     break;
 
                 case ABS_MT_TRACKING_ID:
                     device.HasTrackingId = true;
+                    if (device.SlotTracker is { } trackerId)
+                    {
+                        trackerId.ProcessTrackingId(ev.value);
+                        break;
+                    }
+
                     if (ev.value >= 0)
                     {
                         if (device.TouchDown || device.TouchPendingBegin)
@@ -494,6 +540,12 @@ public class DrmUnifiedInputBackend : IInputBackend
     {
         lock (_sync)
         {
+            if (device.SlotTracker is { } tracker)
+            {
+                CommitMultiTouchFrame(ev, root, handler, device, tracker);
+                return;
+            }
+
             var tapDistance = Math.Max(0, _touchOptions.TapMaxDistancePx);
             var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
             var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
@@ -585,6 +637,180 @@ public class DrmUnifiedInputBackend : IInputBackend
         }
     }
 
+    /// <summary>
+    /// Returns the MT slot tracker for the device, creating it lazily when the
+    /// first ABS_MT_SLOT event proves protocol B at runtime although
+    /// EVIOCGABS(ABS_MT_SLOT) did not report a usable range at open.
+    /// </summary>
+    private MultiTouchSlotTracker GetOrCreateSlotTracker(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
+    {
+        if (device.SlotTracker is { } tracker)
+            return tracker;
+
+        tracker = new MultiTouchSlotTracker(MultiTouchSlotTracker.FallbackSlotCount);
+        device.SlotTracker = tracker;
+
+        if (_debugInput)
+        {
+            Console.WriteLine(
+                $"[DrmKit][input] {device.Path}: ABS_MT_SLOT seen at runtime, enabling MT protocol B " +
+                $"with fallback capacity of {MultiTouchSlotTracker.FallbackSlotCount} slots.");
+        }
+
+        // A contact tracked by the legacy single-touch path cannot continue once
+        // MT routing takes over; cancel it so it does not get stuck down.
+        if (device.TouchDown)
+        {
+            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
+            device.TouchDown = false;
+            device.TouchHasStartPos = false;
+        }
+
+        device.TouchPendingBegin = false;
+        device.TouchPendingEnd = false;
+
+        return tracker;
+    }
+
+    /// <summary>
+    /// Maps an ABS_MT_POSITION_X/Y value for the tracker's current slot. The MT
+    /// axes have their own calibration (their ranges may differ from ABS_X/ABS_Y)
+    /// and the uncalibrated-axis drop rule applies per axis: an unmappable value
+    /// is discarded, which defers the contact's Begin until a position is known.
+    /// </summary>
+    private void HandleMtPosition(DeviceInputState device, MultiTouchSlotTracker tracker, AxisCalibration axis, bool rawAxisIsX, int raw)
+    {
+        axis.UpdateObservation(raw);
+
+        var targetsScreenX = TouchCoordinateMapper.TargetsScreenX(rawAxisIsX, _touchOptions.SwapXY);
+        var size = _screen?.ScaledSize ?? default;
+        var screenSize = (int)Math.Round(targetsScreenX ? size.Width : size.Height);
+        var invert = targetsScreenX ? _touchOptions.InvertX : _touchOptions.InvertY;
+
+        var mapped = TouchCoordinateMapper.Map(raw, axis, screenSize, invert);
+        if (mapped is null)
+        {
+            WarnUncalibratedAxisOnce(device, axis, rawAxisIsX);
+            return;
+        }
+
+        if (targetsScreenX)
+            tracker.SetScreenX(mapped.Value);
+        else
+            tracker.SetScreenY(mapped.Value);
+    }
+
+    /// <summary>
+    /// SYN_REPORT for an MT protocol B device: commits the buffered frame and
+    /// emits one raw touch event per changed slot. Jitter suppression and tap
+    /// classification apply only while exactly one contact is active — from the
+    /// moment a second contact begins everything is delivered raw so Avalonia's
+    /// gesture recognizers (pinch etc.) receive unfiltered points. Only the
+    /// primary (first) contact drives the shared soft-cursor position.
+    /// </summary>
+    private void CommitMultiTouchFrame(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device, MultiTouchSlotTracker tracker)
+    {
+        device.PendingAbsolutePosition = false;
+
+        var frameEvents = tracker.CommitFrame();
+        if (frameEvents.Count == 0)
+            return;
+
+        var tapDistance = Math.Max(0, _touchOptions.TapMaxDistancePx);
+        var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
+        var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
+
+        if (tracker.ActiveContactCount > 1)
+            device.MtGestureSlot = -1;
+
+        foreach (var e in frameEvents)
+        {
+            var point = new Point(e.X, e.Y);
+            var isPrimary = e.SlotIndex == tracker.PrimarySlot;
+
+            switch (e.Kind)
+            {
+                case SlotContactEventKind.Begin:
+                    if (tracker.ActiveContactCount == 1)
+                    {
+                        device.MtGestureSlot = e.SlotIndex;
+                        device.MtGestureStartPos = point;
+                        device.MtGestureLastPos = point;
+                        device.MtGestureStartTimestamp = ToTimestamp(ev.time);
+                        device.MtGestureExceededTapDistance = false;
+                    }
+
+                    if (isPrimary)
+                    {
+                        UpdateSharedCursor(point);
+                        EmitPointerMove(ev.time, root, handler);
+                    }
+
+                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin, point, e.TrackingId);
+                    break;
+
+                case SlotContactEventKind.Update:
+                    if (e.SlotIndex == device.MtGestureSlot && _touchOptions.EnableTapSwipeSeparation)
+                    {
+                        var movedFromLast = Distance(device.MtGestureLastPos, point);
+                        var movedEnough = movedFromLast >= jitterThreshold
+                                          || (e.IsLiftFlush && movedFromLast > 0);
+                        if (!movedEnough)
+                            break; // suppressed sensor jitter
+
+                        if (Distance(device.MtGestureStartPos, point) > tapDistance)
+                            device.MtGestureExceededTapDistance = true;
+
+                        device.MtGestureLastPos = point;
+                    }
+
+                    if (isPrimary)
+                    {
+                        UpdateSharedCursor(point);
+                        EmitPointerMove(ev.time, root, handler);
+                    }
+
+                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate, point, e.TrackingId);
+                    break;
+
+                case SlotContactEventKind.End:
+                    if (e.SlotIndex == device.MtGestureSlot)
+                    {
+                        if (_debugInput)
+                        {
+                            var endTs = ToTimestamp(ev.time);
+                            var durationMs = endTs >= device.MtGestureStartTimestamp
+                                ? (long)(endTs - device.MtGestureStartTimestamp)
+                                : 0;
+                            var totalTravel = Distance(device.MtGestureStartPos, point);
+                            var isTap = !device.MtGestureExceededTapDistance
+                                        && totalTravel <= tapDistance
+                                        && durationMs <= tapDurationMs;
+
+                            Console.WriteLine(
+                                $"[DrmKit][input][touch] end id={e.TrackingId} tap={isTap} " +
+                                $"distance={totalTravel:0.##} durationMs={durationMs}");
+                        }
+
+                        device.MtGestureSlot = -1;
+                    }
+
+                    if (isPrimary)
+                        UpdateSharedCursor(point);
+
+                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd, point, e.TrackingId);
+                    break;
+            }
+        }
+    }
+
+    private void UpdateSharedCursor(Point point)
+    {
+        _cursorX = point.X;
+        _cursorY = point.Y;
+        ClampCursor();
+    }
+
     private void HandleKeyEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
     {
         lock (_sync)
@@ -601,7 +827,7 @@ public class DrmUnifiedInputBackend : IInputBackend
 
             if (ev.code == BTN_TOUCH)
             {
-                if (device.HasTrackingId)
+                if (device.HasTrackingId || MultiTouchSlotTracker.SuppressesSingleTouchEmulation(device.SlotTracker))
                     return;
 
                 HandleTouchButton(device, isDownOrRepeat);
@@ -754,6 +980,10 @@ public class DrmUnifiedInputBackend : IInputBackend
 
         state.PreferMtAxes = state.MtX.HasKernelRange && state.MtY.HasKernelRange;
 
+        var slotCount = TryReadSlotCount(fs, path);
+        if (slotCount > 0)
+            state.SlotTracker = new MultiTouchSlotTracker(slotCount);
+
         lock (_sync)
             _deviceStates[path] = state;
 
@@ -762,10 +992,38 @@ public class DrmUnifiedInputBackend : IInputBackend
             Console.WriteLine(
                 $"[DrmKit][input] Device calib {path}: " +
                 $"MT=({FormatAxis(state.MtX)},{FormatAxis(state.MtY)}), " +
-                $"ABS=({FormatAxis(state.AbsX)},{FormatAxis(state.AbsY)}), preferMT={state.PreferMtAxes}");
+                $"ABS=({FormatAxis(state.AbsX)},{FormatAxis(state.AbsY)}), preferMT={state.PreferMtAxes}, " +
+                $"mtSlots={(state.SlotTracker?.SlotCount.ToString() ?? "n/a")}");
         }
 
         return state;
+    }
+
+    /// <summary>
+    /// Reads the MT protocol B slot capacity from EVIOCGABS(ABS_MT_SLOT):
+    /// maximum + 1. Returns 0 when the device does not report MT slots or the
+    /// ioctl fails; protocol B can then still be detected at runtime from the
+    /// first ABS_MT_SLOT event (with a fallback slot capacity).
+    /// </summary>
+    private int TryReadSlotCount(FileStream fs, string path)
+    {
+        try
+        {
+            var fd = fs.SafeFileHandle.DangerousGetHandle().ToInt32();
+            var request = BuildEviocgabsRequest(ABS_MT_SLOT);
+
+            // A device without ABS_MT_SLOT reports a zeroed range here, so a
+            // positive maximum is what actually identifies protocol B.
+            if (ioctl(fd, request, out var abs) == 0 && abs.maximum > abs.minimum && abs.maximum > 0)
+                return abs.maximum + 1;
+        }
+        catch (Exception ex)
+        {
+            if (_debugInput)
+                Console.WriteLine($"[DrmKit][input] EVIOCGABS(ABS_MT_SLOT) failed on {path}: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        return 0;
     }
 
     private static string FormatAxis(AxisCalibration axis)
