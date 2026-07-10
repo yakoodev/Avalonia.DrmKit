@@ -169,9 +169,15 @@ public class DrmUnifiedInputBackend : IInputBackend
         public double PendingCursorX { get; set; }
         public double PendingCursorY { get; set; }
 
+        // Relative motion accumulated within the current evdev packet; a single
+        // pointer move is emitted at the frame boundary (SYN_REPORT) or flushed
+        // early when a button/wheel event must observe it in order.
+        public bool PendingRelativeMove { get; set; }
+
         public void ResetFrameState()
         {
             PendingAbsolutePosition = false;
+            PendingRelativeMove = false;
             TouchPendingBegin = false;
             TouchPendingEnd = false;
         }
@@ -321,28 +327,36 @@ public class DrmUnifiedInputBackend : IInputBackend
 
         lock (_sync)
         {
-            device.ResetFrameState();
-
-            if (device.SlotTracker is { } tracker)
+            BeginFrameBatch();
+            try
             {
-                foreach (var contact in tracker.CancelAll())
+                device.ResetFrameState();
+
+                if (device.SlotTracker is { } tracker)
                 {
-                    EmitTouch(time, root, handler, RawPointerEventType.TouchCancel,
-                        new Point(contact.X, contact.Y), contact.TrackingId);
+                    foreach (var contact in tracker.CancelAll())
+                    {
+                        EmitTouch(time, root, handler, RawPointerEventType.TouchCancel,
+                            new Point(contact.X, contact.Y), contact.TrackingId);
+                    }
+
+                    device.MtGestureSlot = -1;
                 }
 
-                device.MtGestureSlot = -1;
-            }
+                if (device.TouchDown)
+                {
+                    EmitTouch(time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
+                    device.TouchDown = false;
+                    device.TouchHasStartPos = false;
+                }
 
-            if (device.TouchDown)
+                device.TouchPendingBegin = false;
+                device.TouchPendingEnd = false;
+            }
+            finally
             {
-                EmitTouch(time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
-                device.TouchDown = false;
-                device.TouchHasStartPos = false;
+                FlushFrameBatch(handler);
             }
-
-            device.TouchPendingBegin = false;
-            device.TouchPendingEnd = false;
         }
     }
 
@@ -531,7 +545,7 @@ public class DrmUnifiedInputBackend : IInputBackend
         switch (ev.type)
         {
             case EV_REL:
-                HandleRelativeEvent(ev, root, handler);
+                HandleRelativeEvent(ev, root, handler, device);
                 break;
 
             case EV_ABS:
@@ -555,68 +569,99 @@ public class DrmUnifiedInputBackend : IInputBackend
     {
         lock (_sync)
         {
-            if (_debugInput)
-                Console.WriteLine($"[DrmKit][input] SYN_DROPPED on {device.Path}: resyncing, discarding partial frame state.");
-
-            device.ResetFrameState();
-
-            if (device.SlotTracker is { } tracker)
+            BeginFrameBatch();
+            try
             {
-                // We may have missed lifts and slot changes; cancel every contact
-                // downstream knows about and reset the slot state. The gate re-arms
-                // after the next full frame and new contacts begin cleanly.
-                foreach (var contact in tracker.CancelAll())
-                {
-                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel,
-                        new Point(contact.X, contact.Y), contact.TrackingId);
-                }
-
-                device.MtGestureSlot = -1;
-
-                // Proper recovery: query the kernel's current per-slot state via
-                // EVIOCGMTSLOTS and re-announce contacts that are physically
-                // still down, so held fingers keep working without re-touching.
-                // If the ioctl fails we fall back to the cancel-only behavior.
-                foreach (var contact in TryReseedFromKernelState(device, tracker))
-                {
-                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin,
-                        new Point(contact.X, contact.Y), contact.TrackingId);
-                }
+                HandleSynDroppedLocked(ev, root, handler, device);
             }
-
-            if (device.TouchDown)
+            finally
             {
-                // We may have missed the lift; cancel the gesture so the touch
-                // cannot get stuck down. The next contact begins cleanly.
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
-                device.TouchDown = false;
-                device.TouchHasStartPos = false;
+                FlushFrameBatch(handler);
             }
         }
     }
 
-    private void HandleRelativeEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler)
+    private void HandleSynDroppedLocked(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
+    {
+        if (_debugInput)
+            Console.WriteLine($"[DrmKit][input] SYN_DROPPED on {device.Path}: resyncing, discarding partial frame state.");
+
+        device.ResetFrameState();
+
+        if (device.SlotTracker is { } tracker)
+        {
+            // We may have missed lifts and slot changes; cancel every contact
+            // downstream knows about and reset the slot state. The gate re-arms
+            // after the next full frame and new contacts begin cleanly.
+            foreach (var contact in tracker.CancelAll())
+            {
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel,
+                    new Point(contact.X, contact.Y), contact.TrackingId);
+            }
+
+            device.MtGestureSlot = -1;
+
+            // Proper recovery: query the kernel's current per-slot state via
+            // EVIOCGMTSLOTS and re-announce contacts that are physically
+            // still down, so held fingers keep working without re-touching.
+            // If the ioctl fails we fall back to the cancel-only behavior.
+            foreach (var contact in TryReseedFromKernelState(device, tracker))
+            {
+                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin,
+                    new Point(contact.X, contact.Y), contact.TrackingId);
+            }
+        }
+
+        if (device.TouchDown)
+        {
+            // We may have missed the lift; cancel the gesture so the touch
+            // cannot get stuck down. The next contact begins cleanly.
+            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
+            device.TouchDown = false;
+            device.TouchHasStartPos = false;
+        }
+    }
+
+    private void HandleRelativeEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
     {
         lock (_sync)
         {
             switch (ev.code)
             {
                 case REL_X:
+                    // Accumulate; one pointer move is emitted per frame at SYN_REPORT
+                    // (REL_X + REL_Y in one packet used to produce two posts).
                     _cursorX += ev.value;
-                    EmitPointerMove(ev.time, root, handler);
+                    device.PendingRelativeMove = true;
                     break;
                 case REL_Y:
                     _cursorY += ev.value;
-                    EmitPointerMove(ev.time, root, handler);
+                    device.PendingRelativeMove = true;
                     break;
                 case REL_WHEEL:
+                    FlushPendingRelativeMove(ev.time, root, handler, device);
                     EmitWheel(ev.time, root, handler, new Vector(0, -ev.value));
                     break;
                 case REL_HWHEEL:
+                    FlushPendingRelativeMove(ev.time, root, handler, device);
                     EmitWheel(ev.time, root, handler, new Vector(ev.value, 0));
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Emits the accumulated relative motion immediately. Called (under _sync)
+    /// before button/wheel events so they observe the movement that preceded
+    /// them within the same packet — ordering is preserved exactly.
+    /// </summary>
+    private void FlushPendingRelativeMove(TimeVal time, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
+    {
+        if (!device.PendingRelativeMove)
+            return;
+
+        device.PendingRelativeMove = false;
+        EmitPointerMove(time, root, handler);
     }
 
     private void HandleAbsoluteEvent(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
@@ -758,101 +803,116 @@ public class DrmUnifiedInputBackend : IInputBackend
     {
         lock (_sync)
         {
-            if (device.SlotTracker is { } tracker)
+            BeginFrameBatch();
+            try
             {
-                CommitMultiTouchFrame(ev, root, handler, device, tracker);
-                return;
+                HandleSyncEventLocked(ev, root, handler, device);
             }
-
-            var tapDistance = Math.Max(0, _touchOptions.TapMaxDistancePx);
-            var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
-            var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
-
-            var hadPendingPosition = device.PendingAbsolutePosition;
-            var previousPoint = new Point(_cursorX, _cursorY);
-            if (device.PendingAbsolutePosition)
+            finally
             {
-                _cursorX = device.PendingCursorX;
-                _cursorY = device.PendingCursorY;
-                ClampCursor();
+                FlushFrameBatch(handler);
             }
-
-            var currentPoint = new Point(_cursorX, _cursorY);
-            var absoluteDelta = Distance(previousPoint, currentPoint);
-            var movedFromLastTouch = device.TouchDown
-                ? Distance(device.TouchLastPos, currentPoint)
-                : 0;
-            // The frame that carries the touch end bypasses the jitter threshold so
-            // TouchEnd is preceded by an update at the true final position instead of
-            // a stale point.
-            var isLiftFrame = device.TouchPendingEnd && device.TouchDown;
-            var movedEnoughForTouchUpdate = !_touchOptions.EnableTapSwipeSeparation
-                || movedFromLastTouch >= jitterThreshold
-                || (isLiftFrame && movedFromLastTouch > 0);
-            var suppressPointerJitter = device.TouchDown || device.TouchPendingBegin;
-            var emitPointerMove = hadPendingPosition
-                                  && (!suppressPointerJitter
-                                      || !_touchOptions.EnableTapSwipeSeparation
-                                      || absoluteDelta >= jitterThreshold);
-
-            if (emitPointerMove)
-                EmitPointerMove(ev.time, root, handler);
-
-            var emittedBegin = false;
-            if (device.TouchPendingBegin)
-            {
-                device.TouchPendingBegin = false;
-                device.TouchDown = true;
-                device.TouchStartTimestamp = ToTimestamp(ev.time);
-                device.TouchStartPos = currentPoint;
-                device.TouchLastPos = currentPoint;
-                device.TouchHasStartPos = true;
-                device.TouchExceededTapDistance = false;
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin, currentPoint, device.TouchId);
-                emittedBegin = true;
-            }
-
-            if (device.TouchDown && !emittedBegin && hadPendingPosition && movedEnoughForTouchUpdate)
-            {
-                if (device.TouchHasStartPos)
-                {
-                    var totalTravel = Distance(device.TouchStartPos, currentPoint);
-                    if (totalTravel > tapDistance)
-                        device.TouchExceededTapDistance = true;
-                }
-
-                device.TouchLastPos = currentPoint;
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate, currentPoint, device.TouchId);
-            }
-
-            if (device.TouchPendingEnd && device.TouchDown)
-            {
-                device.TouchPendingEnd = false;
-                var endTs = ToTimestamp(ev.time);
-                var durationMs = endTs >= device.TouchStartTimestamp ? (long)(endTs - device.TouchStartTimestamp) : 0;
-                var totalTravel = device.TouchHasStartPos ? Distance(device.TouchStartPos, currentPoint) : 0;
-                var isTap = !device.TouchExceededTapDistance
-                            && totalTravel <= tapDistance
-                            && durationMs <= tapDurationMs;
-
-                if (_debugInput)
-                {
-                    Console.WriteLine(
-                        $"[DrmKit][input][touch] end id={device.TouchId} tap={isTap} " +
-                        $"distance={totalTravel:0.##} durationMs={durationMs}");
-                }
-
-                EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd, currentPoint, device.TouchId);
-                device.TouchDown = false;
-                device.TouchHasStartPos = false;
-            }
-            else if (device.TouchPendingEnd)
-            {
-                device.TouchPendingEnd = false;
-            }
-
-            device.PendingAbsolutePosition = false;
         }
+    }
+
+    private void HandleSyncEventLocked(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, DeviceInputState device)
+    {
+        FlushPendingRelativeMove(ev.time, root, handler, device);
+
+        if (device.SlotTracker is { } tracker)
+        {
+            CommitMultiTouchFrame(ev, root, handler, device, tracker);
+            return;
+        }
+
+        var tapDistance = Math.Max(0, _touchOptions.TapMaxDistancePx);
+        var tapDurationMs = Math.Max(0, _touchOptions.TapMaxDurationMs);
+        var jitterThreshold = Math.Max(0, _touchOptions.MoveJitterThresholdPx);
+
+        var hadPendingPosition = device.PendingAbsolutePosition;
+        var previousPoint = new Point(_cursorX, _cursorY);
+        if (device.PendingAbsolutePosition)
+        {
+            _cursorX = device.PendingCursorX;
+            _cursorY = device.PendingCursorY;
+            ClampCursor();
+        }
+
+        var currentPoint = new Point(_cursorX, _cursorY);
+        var absoluteDelta = Distance(previousPoint, currentPoint);
+        var movedFromLastTouch = device.TouchDown
+            ? Distance(device.TouchLastPos, currentPoint)
+            : 0;
+        // The frame that carries the touch end bypasses the jitter threshold so
+        // TouchEnd is preceded by an update at the true final position instead of
+        // a stale point.
+        var isLiftFrame = device.TouchPendingEnd && device.TouchDown;
+        var movedEnoughForTouchUpdate = !_touchOptions.EnableTapSwipeSeparation
+            || movedFromLastTouch >= jitterThreshold
+            || (isLiftFrame && movedFromLastTouch > 0);
+        var suppressPointerJitter = device.TouchDown || device.TouchPendingBegin;
+        var emitPointerMove = hadPendingPosition
+                              && (!suppressPointerJitter
+                                  || !_touchOptions.EnableTapSwipeSeparation
+                                  || absoluteDelta >= jitterThreshold);
+
+        if (emitPointerMove)
+            EmitPointerMove(ev.time, root, handler);
+
+        var emittedBegin = false;
+        if (device.TouchPendingBegin)
+        {
+            device.TouchPendingBegin = false;
+            device.TouchDown = true;
+            device.TouchStartTimestamp = ToTimestamp(ev.time);
+            device.TouchStartPos = currentPoint;
+            device.TouchLastPos = currentPoint;
+            device.TouchHasStartPos = true;
+            device.TouchExceededTapDistance = false;
+            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin, currentPoint, device.TouchId);
+            emittedBegin = true;
+        }
+
+        if (device.TouchDown && !emittedBegin && hadPendingPosition && movedEnoughForTouchUpdate)
+        {
+            if (device.TouchHasStartPos)
+            {
+                var totalTravel = Distance(device.TouchStartPos, currentPoint);
+                if (totalTravel > tapDistance)
+                    device.TouchExceededTapDistance = true;
+            }
+
+            device.TouchLastPos = currentPoint;
+            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchUpdate, currentPoint, device.TouchId);
+        }
+
+        if (device.TouchPendingEnd && device.TouchDown)
+        {
+            device.TouchPendingEnd = false;
+            var endTs = ToTimestamp(ev.time);
+            var durationMs = endTs >= device.TouchStartTimestamp ? (long)(endTs - device.TouchStartTimestamp) : 0;
+            var totalTravel = device.TouchHasStartPos ? Distance(device.TouchStartPos, currentPoint) : 0;
+            var isTap = !device.TouchExceededTapDistance
+                        && totalTravel <= tapDistance
+                        && durationMs <= tapDurationMs;
+
+            if (_debugInput)
+            {
+                Console.WriteLine(
+                    $"[DrmKit][input][touch] end id={device.TouchId} tap={isTap} " +
+                    $"distance={totalTravel:0.##} durationMs={durationMs}");
+            }
+
+            EmitTouch(ev.time, root, handler, RawPointerEventType.TouchEnd, currentPoint, device.TouchId);
+            device.TouchDown = false;
+            device.TouchHasStartPos = false;
+        }
+        else if (device.TouchPendingEnd)
+        {
+            device.TouchPendingEnd = false;
+        }
+
+        device.PendingAbsolutePosition = false;
     }
 
     /// <summary>
@@ -1132,7 +1192,7 @@ public class DrmUnifiedInputBackend : IInputBackend
 
             if (ev.code is BTN_LEFT or BTN_RIGHT or BTN_MIDDLE)
             {
-                HandleMouseButton(ev, root, handler, isDownOrRepeat);
+                HandleMouseButton(ev, root, handler, isDownOrRepeat, device);
                 return;
             }
 
@@ -1450,8 +1510,12 @@ public class DrmUnifiedInputBackend : IInputBackend
     [DllImport("libc", SetLastError = true)]
     private static extern int ioctl(int fd, ulong request, [In, Out] int[] buffer);
 
-    private void HandleMouseButton(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, bool isDown)
+    private void HandleMouseButton(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, bool isDown, DeviceInputState device)
     {
+        // A button event must observe the movement that preceded it within the
+        // same packet, so any accumulated relative motion is flushed first.
+        FlushPendingRelativeMove(ev.time, root, handler, device);
+
         RawPointerEventType type;
 
         switch (ev.code)
@@ -1885,7 +1949,58 @@ public class DrmUnifiedInputBackend : IInputBackend
 
     private void Post(Action<RawInputEventArgs> handler, RawInputEventArgs args)
     {
+        if (_batching)
+        {
+            // Inside a frame commit: collected and dispatched as one UI post.
+            _frameBatch.Add(args);
+            return;
+        }
+
         Dispatcher.UIThread.Post(() => Deliver(handler, args), DispatcherPriority.Input);
+    }
+
+    // Frame coalescing state; only touched under _sync.
+    private readonly List<RawInputEventArgs> _frameBatch = new();
+    private bool _batching;
+
+    /// <summary>
+    /// Starts collecting emitted events instead of posting each one separately.
+    /// Must be called under _sync and paired with <see cref="FlushFrameBatch"/>.
+    /// </summary>
+    private void BeginFrameBatch()
+    {
+        _batching = true;
+    }
+
+    /// <summary>
+    /// Dispatches everything collected since <see cref="BeginFrameBatch"/> as a
+    /// single Dispatcher.UIThread.Post that delivers the events in emission
+    /// order — one post per evdev SYN_REPORT frame instead of one per event.
+    /// Nothing is throttled or dropped; a single-event frame posts directly.
+    /// </summary>
+    private void FlushFrameBatch(Action<RawInputEventArgs> handler)
+    {
+        _batching = false;
+
+        if (_frameBatch.Count == 0)
+            return;
+
+        if (_frameBatch.Count == 1)
+        {
+            var single = _frameBatch[0];
+            _frameBatch.Clear();
+            Post(handler, single);
+            return;
+        }
+
+        var batch = _frameBatch.ToArray();
+        _frameBatch.Clear();
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var args in batch)
+                Deliver(handler, args);
+        }, DispatcherPriority.Input);
     }
 }
 
