@@ -115,6 +115,13 @@ public class DrmUnifiedInputBackend : IInputBackend
     private sealed class DeviceInputState
     {
         public string Path { get; init; } = string.Empty;
+
+        /// <summary>
+        /// Open evdev stream of the device; used for EVIOCGMTSLOTS state queries
+        /// during SYN_DROPPED recovery. Only touched from the device's own
+        /// reader thread, which owns the stream's lifetime.
+        /// </summary>
+        public FileStream? Stream { get; set; }
         public AxisCalibration AbsX { get; } = new();
         public AxisCalibration AbsY { get; } = new();
         public AxisCalibration MtX { get; } = new();
@@ -370,6 +377,16 @@ public class DrmUnifiedInputBackend : IInputBackend
                 }
 
                 device.MtGestureSlot = -1;
+
+                // Proper recovery: query the kernel's current per-slot state via
+                // EVIOCGMTSLOTS and re-announce contacts that are physically
+                // still down, so held fingers keep working without re-touching.
+                // If the ioctl fails we fall back to the cancel-only behavior.
+                foreach (var contact in TryReseedFromKernelState(device, tracker))
+                {
+                    EmitTouch(ev.time, root, handler, RawPointerEventType.TouchBegin,
+                        new Point(contact.X, contact.Y), contact.TrackingId);
+                }
             }
 
             if (device.TouchDown)
@@ -686,14 +703,7 @@ public class DrmUnifiedInputBackend : IInputBackend
     /// </summary>
     private void HandleMtPosition(DeviceInputState device, MultiTouchSlotTracker tracker, AxisCalibration axis, bool rawAxisIsX, int raw)
     {
-        axis.UpdateObservation(raw);
-
-        var targetsScreenX = TouchCoordinateMapper.TargetsScreenX(rawAxisIsX, _touchOptions.SwapXY);
-        var size = _screen?.ScaledSize ?? default;
-        var screenSize = (int)Math.Round(targetsScreenX ? size.Width : size.Height);
-        var invert = targetsScreenX ? _touchOptions.InvertX : _touchOptions.InvertY;
-
-        var mapped = TouchCoordinateMapper.Map(raw, axis, screenSize, invert);
+        var mapped = MapMtAxis(axis, rawAxisIsX, raw, out var targetsScreenX);
         if (mapped is null)
         {
             WarnUncalibratedAxisOnce(device, axis, rawAxisIsX);
@@ -704,6 +714,106 @@ public class DrmUnifiedInputBackend : IInputBackend
             tracker.SetScreenX(mapped.Value);
         else
             tracker.SetScreenY(mapped.Value);
+    }
+
+    /// <summary>
+    /// Maps one raw MT axis value to a screen coordinate (calibration + SwapXY +
+    /// inversion), reporting which screen axis it targets. Returns null while the
+    /// axis has no usable calibration range.
+    /// </summary>
+    private double? MapMtAxis(AxisCalibration axis, bool rawAxisIsX, int raw, out bool targetsScreenX)
+    {
+        axis.UpdateObservation(raw);
+
+        targetsScreenX = TouchCoordinateMapper.TargetsScreenX(rawAxisIsX, _touchOptions.SwapXY);
+        var size = _screen?.ScaledSize ?? default;
+        var screenSize = (int)Math.Round(targetsScreenX ? size.Width : size.Height);
+        var invert = targetsScreenX ? _touchOptions.InvertX : _touchOptions.InvertY;
+
+        return TouchCoordinateMapper.Map(raw, axis, screenSize, invert);
+    }
+
+    /// <summary>
+    /// SYN_DROPPED recovery step 2 (after cancelling all contacts): reads the
+    /// kernel's current per-slot state via EVIOCGMTSLOTS (tracking ids and
+    /// positions) and re-seeds the slot tracker, so contacts that are physically
+    /// still down re-announce as TouchBegin at their current positions instead of
+    /// staying dead until the finger is lifted and re-touched. Returns the Begin
+    /// events to emit; empty when the ioctl fails (cancel-only fallback) or no
+    /// contact is held.
+    /// </summary>
+    private IReadOnlyList<SlotContactEvent> TryReseedFromKernelState(DeviceInputState device, MultiTouchSlotTracker tracker)
+    {
+        var fs = device.Stream;
+        if (fs is null)
+            return Array.Empty<SlotContactEvent>();
+
+        var slotCount = tracker.SlotCount;
+        var ids = TryReadMtSlotValues(fs, ABS_MT_TRACKING_ID, slotCount, device.Path);
+        if (ids is null)
+            return Array.Empty<SlotContactEvent>();
+
+        var anyHeld = false;
+        for (var i = 0; i < slotCount; i++)
+        {
+            if (ids[i] >= 0)
+            {
+                anyHeld = true;
+                break;
+            }
+        }
+
+        if (!anyHeld)
+            return Array.Empty<SlotContactEvent>();
+
+        var xs = TryReadMtSlotValues(fs, ABS_MT_POSITION_X, slotCount, device.Path);
+        var ys = TryReadMtSlotValues(fs, ABS_MT_POSITION_Y, slotCount, device.Path);
+
+        var kernelSlots = new SlotResyncState[slotCount];
+        for (var i = 0; i < slotCount; i++)
+        {
+            if (ids[i] < 0)
+            {
+                kernelSlots[i] = SlotResyncState.Empty;
+                continue;
+            }
+
+            double? screenX = null, screenY = null;
+            if (xs is not null)
+                AssignMappedMtAxis(device.MtX, rawAxisIsX: true, xs[i], ref screenX, ref screenY);
+            if (ys is not null)
+                AssignMappedMtAxis(device.MtY, rawAxisIsX: false, ys[i], ref screenX, ref screenY);
+
+            kernelSlots[i] = new SlotResyncState
+            {
+                TrackingId = ids[i],
+                HasPosition = screenX.HasValue && screenY.HasValue,
+                X = screenX ?? 0,
+                Y = screenY ?? 0
+            };
+        }
+
+        var reseeded = tracker.Reseed(kernelSlots);
+
+        if (_debugInput)
+        {
+            Console.WriteLine(
+                $"[DrmKit][input] {device.Path}: EVIOCGMTSLOTS resync re-announced {reseeded.Count} held contact(s).");
+        }
+
+        return reseeded;
+    }
+
+    private void AssignMappedMtAxis(AxisCalibration axis, bool rawAxisIsX, int raw, ref double? screenX, ref double? screenY)
+    {
+        var mapped = MapMtAxis(axis, rawAxisIsX, raw, out var targetsScreenX);
+        if (mapped is null)
+            return;
+
+        if (targetsScreenX)
+            screenX = mapped;
+        else
+            screenY = mapped;
     }
 
     /// <summary>
@@ -970,7 +1080,8 @@ public class DrmUnifiedInputBackend : IInputBackend
     {
         var state = new DeviceInputState
         {
-            Path = path
+            Path = path,
+            Stream = fs
         };
 
         // Range precedence: explicit option override → kernel EVIOCGABS → runtime observation.
@@ -1064,6 +1175,60 @@ public class DrmUnifiedInputBackend : IInputBackend
         }
     }
 
+    /// <summary>
+    /// Reads the kernel's current value of one ABS_MT_* code for every slot via
+    /// EVIOCGMTSLOTS (_IOR('E', 0x0a, struct input_mt_request_layout): a __u32
+    /// request code followed by one __s32 per slot, filled in place by the
+    /// kernel). Returns null when the ioctl is unavailable or fails.
+    /// </summary>
+    private int[]? TryReadMtSlotValues(FileStream fs, ushort code, int slotCount, string path)
+    {
+        try
+        {
+            var fd = fs.SafeFileHandle.DangerousGetHandle().ToInt32();
+
+            // struct input_mt_request_layout { __u32 code; __s32 values[slotCount]; }
+            var buffer = new int[slotCount + 1];
+            buffer[0] = code;
+
+            var request = BuildEviocgmtslotsRequest(buffer.Length * sizeof(int));
+            if (ioctl(fd, request, buffer) != 0)
+            {
+                if (_debugInput)
+                    Console.WriteLine($"[DrmKit][input] EVIOCGMTSLOTS(0x{code:X2}) failed on {path} (errno {Marshal.GetLastWin32Error()}).");
+                return null;
+            }
+
+            var values = new int[slotCount];
+            Array.Copy(buffer, 1, values, 0, slotCount);
+            return values;
+        }
+        catch (Exception ex)
+        {
+            if (_debugInput)
+                Console.WriteLine($"[DrmKit][input] EVIOCGMTSLOTS(0x{code:X2}) failed on {path}: {ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static ulong BuildEviocgmtslotsRequest(int byteLength)
+    {
+        const int iocNrBits = 8;
+        const int iocTypeBits = 8;
+        const int iocSizeBits = 14;
+        const int iocNrShift = 0;
+        const int iocTypeShift = iocNrShift + iocNrBits;
+        const int iocSizeShift = iocTypeShift + iocTypeBits;
+        const int iocDirShift = iocSizeShift + iocSizeBits;
+        const uint iocRead = 2;
+        const uint eviocgmtslotsNr = 0x0a;
+
+        return (iocRead << iocDirShift)
+               | ((uint)'E' << iocTypeShift)
+               | (eviocgmtslotsNr << iocNrShift)
+               | ((uint)byteLength << iocSizeShift);
+    }
+
     private static ulong BuildEviocgabsRequest(ushort absCode)
     {
         const int iocNrBits = 8;
@@ -1086,6 +1251,9 @@ public class DrmUnifiedInputBackend : IInputBackend
 
     [DllImport("libc", SetLastError = true)]
     private static extern int ioctl(int fd, ulong request, out InputAbsInfo absInfo);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int ioctl(int fd, ulong request, [In, Out] int[] buffer);
 
     private void HandleMouseButton(InputEvent ev, IInputRoot root, Action<RawInputEventArgs> handler, bool isDown)
     {

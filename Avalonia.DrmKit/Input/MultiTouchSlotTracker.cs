@@ -42,6 +42,24 @@ internal readonly struct SlotContactEvent
 }
 
 /// <summary>
+/// Kernel-reported state of one MT slot, as read via EVIOCGMTSLOTS after a
+/// SYN_DROPPED resync. Coordinates are already-mapped screen coordinates;
+/// <see cref="HasPosition"/> is false when the position could not be mapped
+/// (uncalibrated axis).
+/// </summary>
+internal readonly struct SlotResyncState
+{
+    /// <summary>Tracking id currently occupying the slot; &lt; 0 = empty.</summary>
+    public long TrackingId { get; init; }
+
+    public bool HasPosition { get; init; }
+    public double X { get; init; }
+    public double Y { get; init; }
+
+    public static SlotResyncState Empty => new() { TrackingId = -1 };
+}
+
+/// <summary>
 /// Evdev multitouch protocol B per-slot state machine.
 ///
 /// Events between SYN_REPORT boundaries are buffered per slot:
@@ -280,6 +298,58 @@ internal sealed class MultiTouchSlotTracker
 
         _activeContacts = 0;
         _primarySlot = -1;
+
+        return (IReadOnlyList<SlotContactEvent>?)events ?? Array.Empty<SlotContactEvent>();
+    }
+
+    /// <summary>
+    /// Re-seeds the tracker from the kernel per-slot state (EVIOCGMTSLOTS) after
+    /// a SYN_DROPPED resync. Must be called right after <see cref="CancelAll"/>.
+    /// Contacts that are physically still down (tracking id &gt;= 0) are
+    /// re-announced: the returned list contains one Begin per re-seeded contact
+    /// whose position is known (from the kernel snapshot, or the persisted slot
+    /// position when the snapshot value could not be mapped). Contacts without
+    /// any known position are tracked but their Begin is deferred until a
+    /// position arrives (standard deferred-begin rule).
+    /// </summary>
+    public IReadOnlyList<SlotContactEvent> Reseed(SlotResyncState[] kernelSlots)
+    {
+        List<SlotContactEvent>? events = null;
+
+        var count = Math.Min(kernelSlots.Length, _slots.Length);
+        for (var i = 0; i < count; i++)
+        {
+            var kernel = kernelSlots[i];
+            if (kernel.TrackingId < 0)
+                continue;
+
+            ref var s = ref _slots[i];
+
+            s.ActiveTrackingId = kernel.TrackingId;
+            _activeContacts++;
+            if (_primarySlot < 0)
+                _primarySlot = i;
+
+            if (kernel.HasPosition)
+            {
+                s.X = kernel.X;
+                s.Y = kernel.Y;
+                s.HasX = true;
+                s.HasY = true;
+            }
+
+            // Announce immediately when a position is known (kernel snapshot or
+            // the persisted protocol B slot value); otherwise the Begin stays
+            // deferred and commits with the first position update.
+            if (s.HasX && s.HasY)
+            {
+                s.Announced = true;
+                Add(ref events, SlotContactEventKind.Begin, i, s.ActiveTrackingId, s.X, s.Y);
+            }
+
+            s.DirtyX = false;
+            s.DirtyY = false;
+        }
 
         return (IReadOnlyList<SlotContactEvent>?)events ?? Array.Empty<SlotContactEvent>();
     }
