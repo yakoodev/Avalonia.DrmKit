@@ -38,9 +38,10 @@ public class DrmUnifiedInputBackend : IInputBackend
     private Action<RawInputEventArgs>? _onInput;
 
     private readonly object _sync = new();
-    private readonly List<Thread> _deviceThreads = new();
+    private readonly Dictionary<string, Thread> _deviceThreads = new();
     private readonly Dictionary<string, DateTimeOffset> _deviceErrorLoggedAt = new();
     private readonly Dictionary<string, DeviceInputState> _deviceStates = new();
+    private DevInputHotplugWatcher? _hotplugWatcher;
     private volatile bool _running;
     private readonly bool _debugInput = Environment.GetEnvironmentVariable("DRMKIT_DEBUG") == "1";
 
@@ -122,6 +123,12 @@ public class DrmUnifiedInputBackend : IInputBackend
         /// reader thread, which owns the stream's lifetime.
         /// </summary>
         public FileStream? Stream { get; set; }
+
+        /// <summary>
+        /// Set by the hotplug watcher when the device node disappears; the
+        /// reader thread exits at the next loop iteration.
+        /// </summary>
+        public volatile bool StopRequested;
         public AxisCalibration AbsX { get; } = new();
         public AxisCalibration AbsY { get; } = new();
         public AxisCalibration MtX { get; } = new();
@@ -224,16 +231,129 @@ public class DrmUnifiedInputBackend : IInputBackend
         }
 
         foreach (var path in devices)
+            StartDeviceThread(path);
+
+        if (OperatingSystem.IsLinux() && Directory.Exists("/dev/input"))
         {
-            var thread = new Thread(DeviceThreadProc)
+            _hotplugWatcher = new DevInputHotplugWatcher(
+                "/dev/input",
+                OnDeviceAppeared,
+                OnDeviceRemoved,
+                () => _running);
+
+            if (_hotplugWatcher.TryStart())
+            {
+                if (_debugInput)
+                    Console.WriteLine("[DrmKit][input] Hotplug watcher active on /dev/input.");
+            }
+            else
+            {
+                _hotplugWatcher = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Starts a reader thread for a device path unless one is already running.
+    /// Used both at startup and when the hotplug watcher reports a new node.
+    /// </summary>
+    private void StartDeviceThread(string path)
+    {
+        Thread thread;
+        lock (_sync)
+        {
+            if (_deviceThreads.ContainsKey(path))
+                return;
+
+            thread = new Thread(DeviceThreadProc)
             {
                 IsBackground = true,
                 Name = $"DrmKit.Evdev.{Path.GetFileName(path)}"
             };
-
-            thread.Start(path);
-            _deviceThreads.Add(thread);
+            _deviceThreads[path] = thread;
         }
+
+        thread.Start(path);
+    }
+
+    private void OnDeviceAppeared(string path)
+    {
+        if (!_running)
+            return;
+
+        if (_debugInput)
+            Console.WriteLine($"[DrmKit][input] Hotplug: device appeared: {path}");
+
+        StartDeviceThread(path);
+    }
+
+    private void OnDeviceRemoved(string path)
+    {
+        DeviceInputState? device;
+        lock (_sync)
+            _deviceStates.TryGetValue(path, out device);
+
+        if (device is null)
+            return;
+
+        if (_debugInput)
+            Console.WriteLine($"[DrmKit][input] Hotplug: device removed: {path}");
+
+        // Ask the reader thread to exit (its blocking read also fails once the
+        // node is gone) and cancel the device's active contacts right away so
+        // they cannot stay stuck down while the thread unwinds.
+        device.StopRequested = true;
+        CancelDeviceContacts(device);
+    }
+
+    /// <summary>
+    /// Cancels every active touch contact of a device (TouchCancel per contact).
+    /// Safe to call multiple times — cancelled state is reset as it is reported.
+    /// </summary>
+    private void CancelDeviceContacts(DeviceInputState device)
+    {
+        var root = _inputRoot;
+        var handler = _onInput;
+        if (root is null || handler is null)
+            return;
+
+        var time = NowTimeVal();
+
+        lock (_sync)
+        {
+            device.ResetFrameState();
+
+            if (device.SlotTracker is { } tracker)
+            {
+                foreach (var contact in tracker.CancelAll())
+                {
+                    EmitTouch(time, root, handler, RawPointerEventType.TouchCancel,
+                        new Point(contact.X, contact.Y), contact.TrackingId);
+                }
+
+                device.MtGestureSlot = -1;
+            }
+
+            if (device.TouchDown)
+            {
+                EmitTouch(time, root, handler, RawPointerEventType.TouchCancel, device.TouchLastPos, device.TouchId);
+                device.TouchDown = false;
+                device.TouchHasStartPos = false;
+            }
+
+            device.TouchPendingBegin = false;
+            device.TouchPendingEnd = false;
+        }
+    }
+
+    private static TimeVal NowTimeVal()
+    {
+        var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        return new TimeVal
+        {
+            tv_sec = ms / 1000,
+            tv_usec = ms % 1000 * 1000
+        };
     }
 
     public void SetInputRoot(IInputRoot inputRoot)
@@ -256,25 +376,33 @@ public class DrmUnifiedInputBackend : IInputBackend
     private void DeviceThreadProc(object? state)
     {
         var path = (string)state!;
+        DeviceInputState? deviceState = null;
 
         try
         {
             if (_debugInput)
                 Console.WriteLine($"[DrmKit][input] Opening device: {path}");
 
-            using var fs = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
+            using var fs = TryOpenDevice(path);
+            if (fs is null)
+                return;
 
-            var deviceState = CreateDeviceState(path, fs);
+            deviceState = CreateDeviceState(path, fs);
 
             var buffer = new byte[InputEventSize];
 
-            while (_running)
+            while (_running && !deviceState.StopRequested)
             {
                 var read = fs.Read(buffer, 0, buffer.Length);
+                if (read == 0)
+                {
+                    // EOF: the device node vanished. Exit cleanly instead of
+                    // spinning on zero-byte reads.
+                    if (_debugInput)
+                        Console.WriteLine($"[DrmKit][input] {path}: EOF, device removed.");
+                    break;
+                }
+
                 if (read != buffer.Length)
                     continue;
 
@@ -284,8 +412,75 @@ public class DrmUnifiedInputBackend : IInputBackend
         }
         catch (Exception ex)
         {
-            if (ShouldLogDeviceError(path))
+            // A vanished device surfaces as an IO error (ENODEV) on the blocking
+            // read; that is an expected unplug, not a failure to spam about.
+            var expectedUnplug = deviceState?.StopRequested == true || !File.Exists(path);
+            if (!expectedUnplug && ShouldLogDeviceError(path))
                 Console.Error.WriteLine($"[DrmKit][input] Failed to read {path}: {ex.GetType().Name}: {ex.Message}");
+            else if (expectedUnplug && _debugInput)
+                Console.WriteLine($"[DrmKit][input] {path}: reader stopped ({ex.GetType().Name}).");
+        }
+        finally
+        {
+            CleanupDevice(path, deviceState);
+        }
+    }
+
+    /// <summary>
+    /// Opens an evdev node, retrying a few times over ~1s: a just-created node
+    /// (hotplug) may be created before udev applies its access mode.
+    /// </summary>
+    private FileStream? TryOpenDevice(string path)
+    {
+        const int attempts = 5;
+        const int retryDelayMs = 220;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(
+                    path,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+            }
+            catch (FileNotFoundException)
+            {
+                return null; // appeared and disappeared again
+            }
+            catch (Exception ex) when (attempt < attempts && _running)
+            {
+                if (_debugInput)
+                    Console.WriteLine($"[DrmKit][input] Open {path} attempt {attempt} failed ({ex.GetType().Name}), retrying...");
+                Thread.Sleep(retryDelayMs);
+            }
+            catch (Exception ex)
+            {
+                if (ShouldLogDeviceError(path))
+                    Console.Error.WriteLine($"[DrmKit][input] Failed to open {path}: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reader-thread teardown: cancels the device's remaining contacts and
+    /// removes its state so a re-plugged node starts fresh.
+    /// </summary>
+    private void CleanupDevice(string path, DeviceInputState? deviceState)
+    {
+        if (deviceState is not null)
+        {
+            CancelDeviceContacts(deviceState);
+            deviceState.Stream = null;
+        }
+
+        lock (_sync)
+        {
+            _deviceThreads.Remove(path);
+            if (deviceState is not null && _deviceStates.TryGetValue(path, out var current) && ReferenceEquals(current, deviceState))
+                _deviceStates.Remove(path);
         }
     }
 
