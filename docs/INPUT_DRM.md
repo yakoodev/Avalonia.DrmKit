@@ -107,6 +107,19 @@ soft cursor uses), is not hit-test visible, and is fully inert when disabled. It
 timer (~60 Hz) runs only while an indicator is fading; steady-state rendering performs no
 per-frame allocations.
 
+## Turning the soft cursor off
+
+On touch-only kiosks the soft cursor only gets in the way. It can be disabled:
+
+| Where | How | Default |
+| --- | --- | --- |
+| `SoftCursorOptions.Enabled` (passed to `UseDrmSoftCursor`) | initial state | `true` |
+| `DRMKIT_SOFT_CURSOR` env variable | `0`/`false`/`off` or `1`/`true`/`on`; overrides the option | unset |
+| `DrmSoftCursor.IsEnabled` | switch at runtime, from any thread | — |
+
+While disabled the cursor stays hidden and mouse movement does not bring it back. The cursor
+layer is still installed, so turning it back on needs no restart.
+
 ## Device hotplug
 
 `/dev/input` is watched with inotify (`IN_CREATE`/`IN_DELETE`/`IN_ATTRIB`) from a single

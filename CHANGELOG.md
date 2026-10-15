@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.8] - 2026-10-15
+### Added
+- The soft cursor can be turned off — for touch-only kiosks where it only gets in the way:
+  `SoftCursorOptions.Enabled` (default `true`) for the initial state, env `DRMKIT_SOFT_CURSOR`
+  (`0`/`false`/`1`/`true`, takes precedence), and `DrmSoftCursor.IsEnabled` to switch it at
+  runtime from any thread. While disabled the cursor stays hidden and mouse movement does not
+  bring it back; the layer is still installed, so it can be re-enabled without a restart.
+
+### Fixed
+- On-screen keyboard stayed open over the screen when its target text box was hidden (e.g. an
+  edit form closed by “Cancel”): focus left without a `LostFocus`. The keyboard now hides once
+  the target is no longer effectively visible (checked after each layout pass).
+- Tapping the gap between on-screen keyboard keys closed the keyboard: the gaps had no
+  background, so the tap fell through to the screen behind and took the focus away. The key
+  grid and the overlay border now have a transparent (hit-testable) background.
+
 ## [12.0.7] - 2026-07-10
 ### Added
 - Multi-contact touch feedback overlay: a semi-transparent circle per active contact appears on

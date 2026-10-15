@@ -30,6 +30,7 @@ namespace Avalonia.DrmKit.Input
         private bool _isPressed;
         private bool _isCursorVisible;
         private bool _touchSuppressed;
+        private bool _disabled;
 
         private DispatcherTimer? _idleTimer;
         private DispatcherTimer? _fadeTimer;
@@ -203,6 +204,26 @@ namespace Avalonia.DrmKit.Input
         /// suppression ends the cursor stays hidden until the next real
         /// mouse/relative input triggers activity again.
         /// </summary>
+        /// <summary>
+        /// Курсор выключен настройкой (<see cref="Avalonia.DrmKit.DrmSoftCursor.IsEnabled"/> = false):
+        /// не показывается вовсе, движение мыши его не возвращает. Нужен для чисто сенсорных
+        /// киосков, где курсор поверх интерфейса только мешает.
+        /// </summary>
+        public void SetDisabled(bool disabled)
+        {
+            if (_disabled == disabled)
+                return;
+
+            _disabled = disabled;
+            if (disabled)
+            {
+                _idleTimer?.Stop();
+                _fadeTimer?.Stop();
+                Opacity = 0.0;
+                IsCursorVisible = false;
+            }
+        }
+
         public void SetTouchSuppressed(bool suppressed)
         {
             if (_touchSuppressed == suppressed)
@@ -221,7 +242,7 @@ namespace Avalonia.DrmKit.Input
 
         private void NotifyActivity()
         {
-            if (_touchSuppressed)
+            if (_touchSuppressed || _disabled)
                 return;
 
             // �������� ������ ����������

@@ -19,6 +19,14 @@ namespace Avalonia.DrmKit
             {
                 Console.WriteLine("[DrmKit] UseDrmSoftCursor enabled");
 
+                // Начальное состояние: опция, переопределяемая DRMKIT_SOFT_CURSOR (0/false — выключен).
+                // Слой курсора всё равно ставится — включить его потом можно через DrmSoftCursor.IsEnabled.
+                var initiallyEnabled = DrmSoftCursor.ResolveInitial(
+                    options.Enabled, Environment.GetEnvironmentVariable("DRMKIT_SOFT_CURSOR"));
+                Input.SoftCursorHub.SetEnabled(initiallyEnabled);
+                if (!initiallyEnabled)
+                    Console.WriteLine("[DrmKit] Soft cursor is disabled (SoftCursorOptions.Enabled / DRMKIT_SOFT_CURSOR)");
+
                 if (!OperatingSystem.IsLinux())
                     return;
 
@@ -177,5 +185,12 @@ namespace Avalonia.DrmKit
         public double StrokeThickness { get; set; } = 2;
         public bool ClickRipple { get; set; } = true;
         public bool HideOnTouch { get; set; } = false;
+
+        /// <summary>
+        /// Показывать ли курсор с самого старта (по умолчанию да). На сенсорном киоске курсор
+        /// можно выключить; менять на ходу — <see cref="DrmSoftCursor.IsEnabled"/>.
+        /// Переменная окружения DRMKIT_SOFT_CURSOR (0/false/1/true) имеет приоритет.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
     }
 }
