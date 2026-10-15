@@ -35,6 +35,16 @@ The format follows Keep a Changelog and SemVer.
   early before button/wheel events so ordering is preserved). Nothing is throttled or dropped.
 
 ### Fixed
+- Keyboard scan-code mapping: evdev code 102 (`KEY_HOME`) was mapped to Right Ctrl, and End,
+  PageUp, PageDown and Insert were not mapped at all — on a physical keyboard Home/End did not
+  work in text boxes. Codes now follow `linux/input-event-codes.h` (Right Ctrl is 97), plus
+  keypad Enter/Divide/Multiply, Scroll Lock, Print Screen, Pause and the Windows/Menu keys;
+  the physical-key map got the same fix.
+- On-screen keyboard keys were see-through on hover/press: the pressed style set `Opacity`
+  0.8 and the Fluent theme replaced the key background with its own semi-transparent brush, so
+  the screen behind the keyboard showed through the key. Hover/pressed now use opaque
+  `Osk.KeyHoverBackground` / `Osk.KeyPressedBackground` (and `Osk.PrimaryKey*` variants) set
+  on the template part; the dark-theme keyboard background is opaque as well.
 - A reader thread whose device node vanished no longer spins on zero-byte reads or logs periodic
   read errors; it exits cleanly and cancels the device's remaining contacts.
 

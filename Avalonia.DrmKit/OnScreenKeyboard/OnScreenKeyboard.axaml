@@ -26,11 +26,20 @@
 
           <!-- активные переключатели (CAPS) -->
           <SolidColorBrush x:Key="Osk.ActiveKeyBackground"    Color="#FFD0E8FF"/>
+
+          <!-- Наведение/нажатие: НЕПРОЗРАЧНЫЕ цвета. Раньше нажатие делало клавишу полупрозрачной
+               (Opacity), а тема Fluent подменяла её фон своим полупрозрачным — сквозь клавишу было
+               видно экран под клавиатурой. -->
+          <SolidColorBrush x:Key="Osk.KeyHoverBackground"          Color="#FFEDEDED"/>
+          <SolidColorBrush x:Key="Osk.KeyPressedBackground"        Color="#FFD4D4D4"/>
+          <SolidColorBrush x:Key="Osk.PrimaryKeyHoverBackground"   Color="#FF3F6AD8"/>
+          <SolidColorBrush x:Key="Osk.PrimaryKeyPressedBackground" Color="#FF3358BC"/>
         </ResourceDictionary>
 
         <!-- Тёмная тема -->
         <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="Osk.Background"             Color="#CC101010"/>
+          <!-- Непрозрачный: полупрозрачный фон показывал экран сквозь клавиатуру. -->
+          <SolidColorBrush x:Key="Osk.Background"             Color="#FF101010"/>
           <SolidColorBrush x:Key="Osk.Border"                 Color="#40FFFFFF"/>
 
           <SolidColorBrush x:Key="Osk.KeyBackground"          Color="#303030"/>
@@ -42,6 +51,11 @@
           <SolidColorBrush x:Key="Osk.PrimaryKeyForeground"   Color="#FFFFFFFF"/>
 
           <SolidColorBrush x:Key="Osk.ActiveKeyBackground"    Color="#FF4060C0"/>
+
+          <SolidColorBrush x:Key="Osk.KeyHoverBackground"          Color="#FF3A3A3A"/>
+          <SolidColorBrush x:Key="Osk.KeyPressedBackground"        Color="#FF4A4A4A"/>
+          <SolidColorBrush x:Key="Osk.PrimaryKeyHoverBackground"   Color="#FF3858AC"/>
+          <SolidColorBrush x:Key="Osk.PrimaryKeyPressedBackground" Color="#FF26448C"/>
         </ResourceDictionary>
 
       </ResourceDictionary.ThemeDictionaries>
@@ -106,12 +120,25 @@
     </Style>
 
     <!-- Hover / Pressed -->
-    <Style Selector="local|OnScreenKeyboard Button.osk-button:pointerover">
-      <Setter Property="Opacity" Value="0.95"/>
+    <Style Selector="local|OnScreenKeyboard Button.osk-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.KeyHoverBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.KeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.KeyForeground}"/>
     </Style>
-
-    <Style Selector="local|OnScreenKeyboard Button.osk-button:pressed">
-      <Setter Property="Opacity" Value="0.8"/>
+    <Style Selector="local|OnScreenKeyboard Button.osk-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.KeyPressedBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.KeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.KeyForeground}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.PrimaryKeyHoverBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.PrimaryKeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.PrimaryKeyForeground}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.PrimaryKeyPressedBackground}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.PrimaryKeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.PrimaryKeyForeground}"/>
     </Style>
 
   </UserControl.Styles>
