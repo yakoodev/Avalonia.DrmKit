@@ -225,7 +225,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             var keyboard = new OnScreenKeyboard();
             var panel = new Border
             {
-                
+                // Прозрачный, но не пустой фон: поля вокруг клавиатуры тоже ловят касание, а не
+                // пропускают его на экран под ней (иначе нажатие мимо клавиши закрывало клавиатуру).
+                Background = Brushes.Transparent,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -273,6 +275,21 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             };
 
             tl.AddHandler(InputElement.LostFocusEvent, (_, __) => MaybeHideIfNoFocusedTextBox(tl, panel), RoutingStrategies.Tunnel);
+            // Поле, к которому открыта клавиатура, скрыли (IsVisible = false у него или у контейнера):
+            // фокус при этом снимается БЕЗ LostFocus, и клавиатура оставалась висеть на пол-экрана
+            // поверх формы, где вводить уже нечего (пример: «Отменить» правку профиля). Скрытие
+            // контейнера всегда вызывает проход раскладки, поэтому проверяем после него.
+            tl.LayoutUpdated += (_, __) =>
+            {
+                if (!panel.IsVisible)
+                    return;
+                var target = GetSession(panel).CurrentTarget;
+                if (target is not null && !target.IsEffectivelyVisible)
+                {
+                    panel.IsVisible = false;
+                    Console.WriteLine("[DrmKit] KeyboardOverlay: auto-hide (target TextBox hidden)");
+                }
+            };
             tl.AddHandler(
                         InputElement.KeyDownEvent,
                         (sender, e) =>

@@ -143,8 +143,11 @@
 
   </UserControl.Styles>
 
+  <!-- Background="Transparent": без фона зазоры между клавишами не ловят касание, оно уходит
+       на экран под клавиатурой, фокус теряется — и клавиатура закрывается. -->
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
-        ColumnDefinitions="*">
+        ColumnDefinitions="*"
+        Background="Transparent">
     <UniformGrid Rows="1" Columns="9"  Grid.Row="0" x:Name="Row0" />
     <UniformGrid Rows="1" Columns="10" Grid.Row="1" x:Name="Row1" />
     <UniformGrid Rows="1" Columns="10" Grid.Row="2" x:Name="Row2" />
