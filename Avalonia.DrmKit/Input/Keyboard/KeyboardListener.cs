@@ -104,7 +104,24 @@ namespace Avalonia.DrmKit.Input
                 case 87: return Key.F11;
                 case 88: return Key.F12;
                 case 100: return Key.RightAlt;
-                case 102: return Key.RightCtrl;
+                // Коды по linux/input-event-codes.h. 102 — это KEY_HOME, а не правый Ctrl (тот 97):
+                // из-за этой ошибки Home выдавал себя за Ctrl, а End/PageUp/PageDown/Insert молча
+                // терялись — на физической клавиатуре в поле ввода не работали Home и End.
+                case 97: return Key.RightCtrl;
+                case 102: return Key.Home;
+                case 104: return Key.PageUp;
+                case 107: return Key.End;
+                case 109: return Key.PageDown;
+                case 110: return Key.Insert;
+                case 96: return Key.Enter;       // KEY_KPENTER
+                case 98: return Key.Divide;      // KEY_KPSLASH
+                case 55: return Key.Multiply;    // KEY_KPASTERISK
+                case 70: return Key.Scroll;
+                case 99: return Key.PrintScreen;
+                case 119: return Key.Pause;
+                case 125: return Key.LWin;
+                case 126: return Key.RWin;
+                case 127: return Key.Apps;
                 case 103: return Key.Up;
                 case 105: return Key.Left;
                 case 106: return Key.Right;

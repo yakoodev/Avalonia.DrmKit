@@ -1863,7 +1863,7 @@ public class DrmUnifiedInputBackend : IInputBackend
         return mods;
     }
 
-    private static PhysicalKey MapPhysicalKey(ushort evdevCode)
+    internal static PhysicalKey MapPhysicalKey(ushort evdevCode)
     {
         return evdevCode switch
         {
@@ -1937,7 +1937,13 @@ public class DrmUnifiedInputBackend : IInputBackend
             87 => PhysicalKey.F11,
             88 => PhysicalKey.F12,
             100 => PhysicalKey.AltRight,
-            102 => PhysicalKey.ControlRight,
+            // Коды по linux/input-event-codes.h: 97 — правый Ctrl, 102 — Home (было перепутано).
+            97 => PhysicalKey.ControlRight,
+            102 => PhysicalKey.Home,
+            104 => PhysicalKey.PageUp,
+            107 => PhysicalKey.End,
+            109 => PhysicalKey.PageDown,
+            110 => PhysicalKey.Insert,
             103 => PhysicalKey.ArrowUp,
             105 => PhysicalKey.ArrowLeft,
             106 => PhysicalKey.ArrowRight,
