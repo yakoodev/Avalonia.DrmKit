@@ -3,42 +3,42 @@
              xmlns:local="clr-namespace:Avalonia.DrmKit.OnScreenKeyboard"
              x:Class="Avalonia.DrmKit.OnScreenKeyboard.OnScreenKeyboard">
 
-  <!-- Ïðèâÿçêà ê òåìå ïðèëîæåíèÿ -->
+  <!-- ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ° Ðº Ñ‚ÐµÐ¼Ðµ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ñ -->
   <UserControl.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
 
-        <!-- Ñâåòëàÿ òåìà -->
+        <!-- Ð¡Ð²ÐµÑ‚Ð»Ð°Ñ Ñ‚ÐµÐ¼Ð° -->
         <ResourceDictionary x:Key="Light">
-          <!-- ôîí ïàíåëè êëàâèàòóðû -->
+          <!-- Ñ„Ð¾Ð½ Ð¿Ð°Ð½ÐµÐ»Ð¸ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñ‹ -->
           <SolidColorBrush x:Key="Osk.Background" Color="#FFF5F5F5"/>
           <SolidColorBrush x:Key="Osk.Border"     Color="#33000000"/>
 
-          <!-- ôîí/áîðäåð/òåêñò îáû÷íûõ êëàâèø -->
+          <!-- Ñ„Ð¾Ð½/Ð±Ð¾Ñ€Ð´ÐµÑ€/Ñ‚ÐµÐºÑÑ‚ Ð¾Ð±Ñ‹Ñ‡Ð½Ñ‹Ñ… ÐºÐ»Ð°Ð²Ð¸Ñˆ -->
           <SolidColorBrush x:Key="Osk.KeyBackground"          Color="#FFFFFFFF"/>
           <SolidColorBrush x:Key="Osk.KeyBorder"              Color="#33000000"/>
           <SolidColorBrush x:Key="Osk.KeyForeground"          Color="#202020"/>
 
-          <!-- îñíîâíûå (Enter/Cancel/etc.) -->
+          <!-- Ð¾ÑÐ½Ð¾Ð²Ð½Ñ‹Ðµ (Enter/Cancel/etc.) -->
           <SolidColorBrush x:Key="Osk.PrimaryKeyBackground"   Color="#FF4A76E8"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyBorder"       Color="#FF4A76E8"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyForeground"   Color="#FFFFFFFF"/>
 
-          <!-- àêòèâíûå ïåðåêëþ÷àòåëè (CAPS) -->
+          <!-- Ð°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ðµ Ð¿ÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»Ð¸ (CAPS) -->
           <SolidColorBrush x:Key="Osk.ActiveKeyBackground"    Color="#FFD0E8FF"/>
 
-          <!-- Íàâåäåíèå/íàæàòèå: ÍÅÏÐÎÇÐÀ×ÍÛÅ öâåòà. Ðàíüøå íàæàòèå äåëàëî êëàâèøó ïîëóïðîçðà÷íîé
-               (Opacity), à òåìà Fluent ïîäìåíÿëà å¸ ôîí ñâîèì ïîëóïðîçðà÷íûì — ñêâîçü êëàâèøó áûëî
-               âèäíî ýêðàí ïîä êëàâèàòóðîé. -->
+          <!-- ÐÐ°Ð²ÐµÐ´ÐµÐ½Ð¸Ðµ/Ð½Ð°Ð¶Ð°Ñ‚Ð¸Ðµ: ÐÐ•ÐŸÐ ÐžÐ—Ð ÐÐ§ÐÐ«Ð• Ñ†Ð²ÐµÑ‚Ð°. Ð Ð°Ð½ÑŒÑˆÐµ Ð½Ð°Ð¶Ð°Ñ‚Ð¸Ðµ Ð´ÐµÐ»Ð°Ð»Ð¾ ÐºÐ»Ð°Ð²Ð¸ÑˆÑƒ Ð¿Ð¾Ð»ÑƒÐ¿Ñ€Ð¾Ð·Ñ€Ð°Ñ‡Ð½Ð¾Ð¹
+               (Opacity), Ð° Ñ‚ÐµÐ¼Ð° Fluent Ð¿Ð¾Ð´Ð¼ÐµÐ½ÑÐ»Ð° ÐµÑ‘ Ñ„Ð¾Ð½ ÑÐ²Ð¾Ð¸Ð¼ Ð¿Ð¾Ð»ÑƒÐ¿Ñ€Ð¾Ð·Ñ€Ð°Ñ‡Ð½Ñ‹Ð¼ â€” ÑÐºÐ²Ð¾Ð·ÑŒ ÐºÐ»Ð°Ð²Ð¸ÑˆÑƒ Ð±Ñ‹Ð»Ð¾
+               Ð²Ð¸Ð´Ð½Ð¾ ÑÐºÑ€Ð°Ð½ Ð¿Ð¾Ð´ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ð¾Ð¹. -->
           <SolidColorBrush x:Key="Osk.KeyHoverBackground"          Color="#FFEDEDED"/>
           <SolidColorBrush x:Key="Osk.KeyPressedBackground"        Color="#FFD4D4D4"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyHoverBackground"   Color="#FF3F6AD8"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyPressedBackground" Color="#FF3358BC"/>
         </ResourceDictionary>
 
-        <!-- Ò¸ìíàÿ òåìà -->
+        <!-- Ð¢Ñ‘Ð¼Ð½Ð°Ñ Ñ‚ÐµÐ¼Ð° -->
         <ResourceDictionary x:Key="Dark">
-          <!-- Íåïðîçðà÷íûé: ïîëóïðîçðà÷íûé ôîí ïîêàçûâàë ýêðàí ñêâîçü êëàâèàòóðó. -->
+          <!-- ÐÐµÐ¿Ñ€Ð¾Ð·Ñ€Ð°Ñ‡Ð½Ñ‹Ð¹: Ð¿Ð¾Ð»ÑƒÐ¿Ñ€Ð¾Ð·Ñ€Ð°Ñ‡Ð½Ñ‹Ð¹ Ñ„Ð¾Ð½ Ð¿Ð¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ð» ÑÐºÑ€Ð°Ð½ ÑÐºÐ²Ð¾Ð·ÑŒ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñƒ. -->
           <SolidColorBrush x:Key="Osk.Background"             Color="#FF101010"/>
           <SolidColorBrush x:Key="Osk.Border"                 Color="#40FFFFFF"/>
 
@@ -64,7 +64,7 @@
 
   <UserControl.Styles>
 
-    <!-- Êîíòåéíåð êëàâèàòóðû -->
+    <!-- ÐšÐ¾Ð½Ñ‚ÐµÐ¹Ð½ÐµÑ€ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ñ‹ -->
     <Style Selector="local|OnScreenKeyboard">
       <Setter Property="Focusable" Value="False"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -76,31 +76,31 @@
       <Setter Property="BorderThickness" Value="1"/>
     </Style>
 
-    <!-- Áàçîâûé ñòèëü äëÿ âñåõ êëàâèø -->
+    <!-- Ð‘Ð°Ð·Ð¾Ð²Ñ‹Ð¹ ÑÑ‚Ð¸Ð»ÑŒ Ð´Ð»Ñ Ð²ÑÐµÑ… ÐºÐ»Ð°Ð²Ð¸Ñˆ -->
     <Style Selector="local|OnScreenKeyboard Button.osk-button">
       <Setter Property="FontSize" Value="18"/>
       <Setter Property="MinHeight" Value="42"/>
       <Setter Property="Margin" Value="2"/>
       <Setter Property="Padding" Value="6,4"/>
 
-      <!-- Öåíòðèðóåì òåêñò -->
+      <!-- Ð¦ÐµÐ½Ñ‚Ñ€Ð¸Ñ€ÑƒÐµÐ¼ Ñ‚ÐµÐºÑÑ‚ -->
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
 
-      <!-- Ðàñòÿæåíèå ïî ÿ÷åéêå -->
+      <!-- Ð Ð°ÑÑ‚ÑÐ¶ÐµÐ½Ð¸Ðµ Ð¿Ð¾ ÑÑ‡ÐµÐ¹ÐºÐµ -->
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="VerticalAlignment" Value="Stretch"/>
 
       <Setter Property="CornerRadius" Value="4"/>
       <Setter Property="BorderThickness" Value="1"/>
 
-      <!-- Öâåòà áåð¸ì èç ðåñóðñîâ OSK -->
+      <!-- Ð¦Ð²ÐµÑ‚Ð° Ð±ÐµÑ€Ñ‘Ð¼ Ð¸Ð· Ñ€ÐµÑÑƒÑ€ÑÐ¾Ð² OSK -->
       <Setter Property="Background" Value="{DynamicResource Osk.KeyBackground}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Osk.KeyBorder}"/>
       <Setter Property="Foreground" Value="{DynamicResource Osk.KeyForeground}"/>
     </Style>
 
-    <!-- Îñíîâíûå êëàâèøè (Enter / Cancel / Backspace / Del / Eng / Rus) -->
+    <!-- ÐžÑÐ½Ð¾Ð²Ð½Ñ‹Ðµ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ¸ (Enter / Cancel / Backspace / Del / Eng / Rus) -->
     <Style Selector="local|OnScreenKeyboard Button.osk-button.primary">
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Background" Value="{DynamicResource Osk.PrimaryKeyBackground}"/>
@@ -108,13 +108,13 @@
       <Setter Property="Foreground" Value="{DynamicResource Osk.PrimaryKeyForeground}"/>
     </Style>
 
-    <!-- Àêòèâíûå ïåðåêëþ÷àòåëè (CAPS) -->
+    <!-- ÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ðµ Ð¿ÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»Ð¸ (CAPS) -->
     <Style Selector="local|OnScreenKeyboard Button.osk-button.active">
       <Setter Property="FontWeight" Value="Bold"/>
       <Setter Property="Background" Value="{DynamicResource Osk.ActiveKeyBackground}"/>
     </Style>
 
-    <!-- «Øèðîêèå» êíîïêè (Space, Caps) -->
+    <!-- Â«Ð¨Ð¸Ñ€Ð¾ÐºÐ¸ÐµÂ» ÐºÐ½Ð¾Ð¿ÐºÐ¸ (Space, Caps) -->
     <Style Selector="local|OnScreenKeyboard Button.osk-button.wide">
       <Setter Property="FontSize" Value="16"/>
     </Style>
@@ -143,8 +143,8 @@
 
   </UserControl.Styles>
 
-  <!-- Background="Transparent": áåç ôîíà çàçîðû ìåæäó êëàâèøàìè íå ëîâÿò êàñàíèå, îíî óõîäèò
-       íà ýêðàí ïîä êëàâèàòóðîé, ôîêóñ òåðÿåòñÿ — è êëàâèàòóðà çàêðûâàåòñÿ. -->
+  <!-- Background="Transparent": Ð±ÐµÐ· Ñ„Ð¾Ð½Ð° Ð·Ð°Ð·Ð¾Ñ€Ñ‹ Ð¼ÐµÐ¶Ð´Ñƒ ÐºÐ»Ð°Ð²Ð¸ÑˆÐ°Ð¼Ð¸ Ð½Ðµ Ð»Ð¾Ð²ÑÑ‚ ÐºÐ°ÑÐ°Ð½Ð¸Ðµ, Ð¾Ð½Ð¾ ÑƒÑ…Ð¾Ð´Ð¸Ñ‚
+       Ð½Ð° ÑÐºÑ€Ð°Ð½ Ð¿Ð¾Ð´ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ð¾Ð¹, Ñ„Ð¾ÐºÑƒÑ Ñ‚ÐµÑ€ÑÐµÑ‚ÑÑ â€” Ð¸ ÐºÐ»Ð°Ð²Ð¸Ð°Ñ‚ÑƒÑ€Ð° Ð·Ð°ÐºÑ€Ñ‹Ð²Ð°ÐµÑ‚ÑÑ. -->
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
         ColumnDefinitions="*"
         Background="Transparent">
