@@ -284,10 +284,13 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 if (!panel.IsVisible)
                     return;
                 var target = GetSession(panel).CurrentTarget;
-                if (target is not null && !target.IsEffectivelyVisible)
+                // Поле ушло из дерева — экран сменили (переход по «хлебным крошкам» и т. п.): у
+                // отцепленного элемента IsEffectivelyVisible остаётся true, и клавиатура висела на
+                // пол-экрана над новым экраном, где поля уже нет.
+                if (target is not null && (!target.IsEffectivelyVisible || TopLevel.GetTopLevel(target) is null))
                 {
                     panel.IsVisible = false;
-                    Console.WriteLine("[DrmKit] KeyboardOverlay: auto-hide (target TextBox hidden)");
+                    Console.WriteLine("[DrmKit] KeyboardOverlay: auto-hide (target TextBox hidden or detached)");
                 }
             };
             tl.AddHandler(

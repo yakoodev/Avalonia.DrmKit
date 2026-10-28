@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.9] - 2026-10-28
+### Added
+- Digit pad for numeric fields: a text box whose `TextInputOptions.ContentType` is `Digits` / `Pin`
+  gets 7-8-9 / 4-5-6 / 1-2-3 / 0, `Number` also gets the culture decimal separator. The pad is
+  centred and at most 840 px wide (full width gave 300 px keys on a 1280 px screen).
+- `OnScreenKeyboardLabels` (`Done`, `Hide`, `CancelChanges`): captions of the action keys, Russian or
+  English by `CurrentUICulture`, overridable by the app.
+
+### Changed
+- The action keys are now three distinct actions in both letter layouts and the digit pad:
+  «Done» (sends Enter to the field so forms and `NumericUpDown` accept the value, then closes),
+  «Hide» (closes and keeps the text, like `Esc`) and «Undo changes» (restores the text the field had
+  when the keyboard opened, then closes). Before there were «Enter» and «Cancel», and «Cancel»
+  silently rolled the text back — people used it to get rid of the keyboard and lost their input.
+
+### Fixed
+- The keyboard stayed open over the next screen after navigating away while it was open: the field
+  was detached from the tree but still counted as visible. It now hides once its field is detached.
+
 ## [12.0.8] - 2026-10-15
 ### Added
 - The soft cursor can be turned off — for touch-only kiosks where it only gets in the way:

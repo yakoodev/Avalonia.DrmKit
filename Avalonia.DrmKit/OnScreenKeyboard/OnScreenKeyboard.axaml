@@ -145,7 +145,8 @@
 
   <!-- Background="Transparent": без фона зазоры между клавишами не ловят касание, оно уходит
        на экран под клавиатурой, фокус теряется — и клавиатура закрывается. -->
-  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+  <Grid x:Name="KeysGrid"
+        RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
         ColumnDefinitions="*"
         Background="Transparent">
     <UniformGrid Rows="1" Columns="9"  Grid.Row="0" x:Name="Row0" />

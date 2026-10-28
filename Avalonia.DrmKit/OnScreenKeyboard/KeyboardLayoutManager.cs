@@ -151,7 +151,7 @@ namespace Avalonia.DrmKit.Input
                 new [] { "q","w","e","r","t","y","u","i","o","p" },
                 new [] { "a","s","d","f","g","h","j","k","l" },
                 new [] { "z","x","c","v","b","n","m",".","," },
-                new [] { "Rus", "CAPS", "SPACE", "Enter","Cancel" },
+                new [] { "Rus", "CAPS", "SPACE", OnScreenKeyboard.OnScreenKeyboardKeys.Hide, OnScreenKeyboard.OnScreenKeyboardKeys.Cancel, OnScreenKeyboard.OnScreenKeyboardKeys.Enter },
             };
 
             RegisterLayout(new KeyboardLayout("en", enMap, enRows));
@@ -222,7 +222,7 @@ namespace Avalonia.DrmKit.Input
                 new [] { "й","ц","у","к","е","н","г","ш","щ","з" },
                 new [] { "ф","ы","в","а","п","р","о","л","д" },
                 new [] { "я","ч","с","м","и","т","ь","б","ю" },
-                new [] { "Eng", "CAPS", "SPACE", "Enter","Cancel" },
+                new [] { "Eng", "CAPS", "SPACE", OnScreenKeyboard.OnScreenKeyboardKeys.Hide, OnScreenKeyboard.OnScreenKeyboardKeys.Cancel, OnScreenKeyboard.OnScreenKeyboardKeys.Enter },
             };
 
             RegisterLayout(new KeyboardLayout("ru", ruMap, ruRows));

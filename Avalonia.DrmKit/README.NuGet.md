@@ -151,8 +151,13 @@ On-screen keyboard (`KeyboardOverlay`):
 
 - opens on pointer/touch focus by default;
 - does not auto-open from keyboard `Tab` focus by default;
-- `Esc` hides overlay without rollback;
-- text rollback is only performed by explicit `Cancel` on overlay keyboard.
+- `Esc` and the «Hide» key hide the overlay without rollback;
+- «Done» sends Enter to the field (forms and `NumericUpDown` accept the value) and hides the overlay;
+- text rollback is only performed by the explicit «Undo changes» key;
+- the overlay hides when its field is hidden or detached (e.g. the screen was changed);
+- fields with `TextInputOptions.ContentType` = `Digits` / `Pin` get a digit pad, `Number` — a digit pad
+  with the culture decimal separator; captions are in `OnScreenKeyboardLabels` (Russian / English by
+  `CurrentUICulture`, overridable).
 
 Useful attached properties:
 

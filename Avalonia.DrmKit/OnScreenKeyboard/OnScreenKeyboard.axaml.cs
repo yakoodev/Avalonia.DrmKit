@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.DrmKit.Input;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -18,7 +19,14 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         private TextBox? _sessionTarget;
         private string _sessionOriginalText = string.Empty;
         private bool _sessionActive;
+        private OnScreenKeyboardMode _mode = OnScreenKeyboardMode.Text;
         public event EventHandler? CloseRequested;
+
+        /// <summary>Letters, digits or digits with a separator — chosen from the focused text box.</summary>
+        public OnScreenKeyboardMode Mode => _mode;
+
+        /// <summary>Widest the digit pad gets: full width on 1280 px gave 300 px keys; 640 px cut «Undo changes».</summary>
+        public const double DigitPadMaxWidth = 840;
 
 
 
@@ -40,6 +48,15 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         {
             _target = textBox;
             BeginEditSession(textBox);
+
+            // The field asks for digits (TextInputOptions.ContentType = Digits / Number / Pin) — show the
+            // digit pad instead of the letter layout.
+            var mode = OnScreenKeyboardKeys.ModeFor(TextInputOptions.GetContentType(textBox));
+            if (mode != _mode)
+            {
+                _mode = mode;
+                Rebuild();
+            }
         }
 
         private void BeginEditSession(TextBox textBox)
@@ -66,8 +83,15 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
         private void Rebuild()
         {
-            var layout = KeyboardLayoutManager.GetCurrent();
-            var rows = layout.Rows;
+            var rows = _mode == OnScreenKeyboardMode.Text
+                ? KeyboardLayoutManager.GetCurrent().Rows
+                : OnScreenKeyboardKeys.DigitRows(withSeparator: _mode == OnScreenKeyboardMode.Decimal);
+
+            if (this.Find<Grid>("KeysGrid") is { } keysGrid)
+            {
+                keysGrid.MaxWidth = _mode == OnScreenKeyboardMode.Text ? double.PositiveInfinity : DigitPadMaxWidth;
+                keysGrid.HorizontalAlignment = _mode == OnScreenKeyboardMode.Text ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+            }
 
             var containers = new[] {
                 this.Find<UniformGrid>("Row0"),
@@ -84,8 +108,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     continue;
 
                 grid.Children.Clear();
+                grid.IsVisible = r < rows.Length;
+                if (r >= rows.Length)
+                    continue;
+                grid.Columns = rows[r].Length;
                 foreach (var key in rows[r])
-                    grid.Children.Add(CreateKeyButton(key));
+                    grid.Children.Add(key.Length == 0 ? new Border { IsHitTestVisible = false } : CreateKeyButton(key));
             }
         }
         protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -107,7 +135,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             // Caps влияет только на "одиночные буквы" (en/ru и т.п.)
             var label = IsLetterKey(text) && _caps
                 ? text.ToUpperInvariant()
-                : text;
+                : OnScreenKeyboardKeys.Caption(text);
 
             var btn = new Button
             {
@@ -132,11 +160,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     btn.Classes.Add("primary");
                     break;
 
-                // Служебные клавиши
+                // Служебные клавиши: ⌫, «Очистить», «Готово», «Скрыть», «Отменить изменения»
                 case "<-":     // Backspace
                 case "del":
-                case "enter":
-                case "cancel":
+                case OnScreenKeyboardKeys.Enter:
+                case OnScreenKeyboardKeys.Hide:
+                case OnScreenKeyboardKeys.Cancel:
                     btn.Classes.Add("primary");
                     break;
 
@@ -195,13 +224,20 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     _target.Focus();
                     return;
 
-                case "enter":
-                    // Просто закрываем ОСК и снимаем фокус, текст не меняем
+                case OnScreenKeyboardKeys.Enter:
+                    // «Готово»: полю — Enter (так NumericUpDown и формы принимают значение), затем закрываем
+                    // ОСК и снимаем фокус. Текст не откатываем.
+                    SendEnterToTarget();
                     CloseAndClearFocus(restoreOriginalText: false);
                     return;
 
-                case "cancel":
-                    // Откатываем исходный текст, закрываем ОСК и снимаем фокус
+                case OnScreenKeyboardKeys.Hide:
+                    // «Скрыть»: просто убрать клавиатуру — набранное остаётся (как Esc).
+                    CloseAndClearFocus(restoreOriginalText: false);
+                    return;
+
+                case OnScreenKeyboardKeys.Cancel:
+                    // «Отменить изменения»: вернуть текст, который был при открытии, и закрыть.
                     CloseAndClearFocus(restoreOriginalText: true);
                     return;
 
@@ -255,6 +291,18 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
                 EndEditSession();
                 HideOverlay();
+            }
+            void SendEnterToTarget()
+            {
+                if (_target is not { } tb)
+                    return;
+                var args = new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Key = Key.Enter,
+                    Source = tb,
+                };
+                tb.RaiseEvent(args);
             }
             void Backspace()
             {
