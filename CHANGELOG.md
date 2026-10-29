@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
-## [12.0.9] - 2026-10-28
+## [12.0.9] - 2026-10-29
 ### Added
 - Digit pad for numeric fields: a text box whose `TextInputOptions.ContentType` is `Digits` / `Pin`
   gets 7-8-9 / 4-5-6 / 1-2-3 / 0, `Number` also gets the culture decimal separator. The pad is
