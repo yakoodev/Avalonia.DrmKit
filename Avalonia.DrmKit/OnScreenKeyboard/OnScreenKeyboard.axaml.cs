@@ -1,10 +1,12 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.DrmKit.Input;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System;
@@ -89,8 +91,10 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
             if (this.Find<Grid>("KeysGrid") is { } keysGrid)
             {
+                // Stretch + MaxWidth: a stretched element that hits MaxWidth is centred. Center would size the
+                // pad by its keys, and wrapped captions (FitCaption) would then shrink it step by step.
                 keysGrid.MaxWidth = _mode == OnScreenKeyboardMode.Text ? double.PositiveInfinity : DigitPadMaxWidth;
-                keysGrid.HorizontalAlignment = _mode == OnScreenKeyboardMode.Text ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+                keysGrid.HorizontalAlignment = HorizontalAlignment.Stretch;
             }
 
             var containers = new[] {
@@ -130,6 +134,30 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             // Одиночный Unicode-символ-буква (английский, русский и т.п.)
             return key.Length == 1 && char.IsLetter(key[0]);
         }
+        /// <summary>
+        /// Long captions («Отменить изменения», «Undo changes») were clipped on narrow keys (800–1024 px
+        /// screens). Now they wrap to the key width (see <see cref="FitCaption"/>), and whatever still does
+        /// not fit is scaled down — never up, so wide keys keep the normal font.
+        /// </summary>
+        private static object CaptionContent(string label) => label.Length <= 2
+            ? label
+            : new Viewbox
+            {
+                Stretch = Stretch.Uniform,
+                StretchDirection = StretchDirection.DownOnly,
+                Child = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
+            };
+
+        /// <summary>A Viewbox measures its child unconstrained, so the wrap width has to come from the key.</summary>
+        private static void FitCaption(Button btn)
+        {
+            if (btn.Content is not Viewbox { Child: TextBlock caption })
+                return;
+            btn.SizeChanged += (_, e) =>
+                caption.MaxWidth = Math.Max(1, e.NewSize.Width - btn.Padding.Left - btn.Padding.Right
+                                                - btn.BorderThickness.Left - btn.BorderThickness.Right);
+        }
+
         private Button CreateKeyButton(string text)
         {
             // Caps влияет только на "одиночные буквы" (en/ru и т.п.)
@@ -139,13 +167,16 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
             var btn = new Button
             {
-                Content = label,
+                Content = CaptionContent(label),
                 MinHeight = 42,
                 IsTabStop = false,
                 Focusable = false,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
+
+            AutomationProperties.SetName(btn, label);
+            FitCaption(btn);
 
             // Базовый класс для всех клавиш ОСК
             btn.Classes.Add("osk-button");

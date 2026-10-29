@@ -24,6 +24,9 @@ The format follows Keep a Changelog and SemVer.
   was detached from the tree but still counted as visible. It now hides once its field is detached.
 - Tapping a text box that already had focus did not bring the keyboard back after it was hidden
   («Hide», `Esc`): the keyboard opened only on `GotFocus`. A tap on the focused field now shows it again.
+- Long action captions («Отменить изменения», «Undo changes») were clipped on narrow keys
+  (800–1024 px screens): they now wrap to the key width and shrink only if they still do not fit.
+  The digit pad stretches up to 840 px instead of sizing itself by its keys.
 
 ## [12.0.8] - 2026-10-15
 ### Added
