@@ -22,6 +22,8 @@ The format follows Keep a Changelog and SemVer.
 ### Fixed
 - The keyboard stayed open over the next screen after navigating away while it was open: the field
   was detached from the tree but still counted as visible. It now hides once its field is detached.
+- Tapping a text box that already had focus did not bring the keyboard back after it was hidden
+  («Hide», `Esc`): the keyboard opened only on `GotFocus`. A tap on the focused field now shows it again.
 
 ## [12.0.8] - 2026-10-15
 ### Added

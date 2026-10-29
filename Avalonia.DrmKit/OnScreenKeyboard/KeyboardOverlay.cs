@@ -145,44 +145,31 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
             tb.GotFocus += (_, __) =>
             {
-                var tl = TopLevel.GetTopLevel(tb);
-                if (tl is null) return;
                 Console.WriteLine("[DrmKit] KeyboardOverlay: GotFocus on TextBox");
-                var hostPanel = FindOrCreateOverlayHost(tl, tb);
-                if (hostPanel is null)
-                {
-                    Console.WriteLine("[DrmKit] KeyboardOverlay: no host Panel");
-                    return;
-                }
-
-                var kbPanel = EnsurePanel(hostPanel, tl);
-                var allowProgrammatic = GetOpenOnProgrammaticFocus(tb);
-                var allowKeyboardFocus = GetOpenOnKeyboardFocus(tb);
-                var userInitiated = IsUserInputRecent(tl);
-
-                if (!allowProgrammatic && !allowKeyboardFocus && !userInitiated)
-                {
-                    var session = GetSession(kbPanel);
-                    session.CurrentTarget = tb;
-                    return;
-                }
-
-                var keyboard = kbPanel.Tag as OnScreenKeyboard;
-                keyboard?.Attach(tb);
-                kbPanel.IsVisible = true;
-                var sessionOnShow = GetSession(kbPanel);
-                sessionOnShow.CurrentTarget = tb;
-                ConsumeUserInput(tl);
-                RefreshOcclusion(tb, tl, hostPanel, kbPanel);
-                Dispatcher.UIThread.Post(
-                    () =>
-                    {
-                        if (kbPanel.IsVisible)
-                            RefreshOcclusion(tb, tl, hostPanel, kbPanel);
-                    },
-                    DispatcherPriority.Background);
-                Console.WriteLine("[DrmKit] KeyboardOverlay: show");
+                ShowFor(tb);
             };
+
+            // Касание по полю, которое УЖЕ в фокусе, а клавиатура скрыта: GotFocus второй раз не придёт,
+            // и клавиатура не открывалась. Так бывает, когда окно само поставило фокус в поле (без
+            // клавиатуры — программный фокус её не открывает) или клавиатуру скрыли, а фокус остался.
+            tb.AddHandler(
+                InputElement.PointerReleasedEvent,
+                (_, __) =>
+                {
+                    if (!tb.IsFocused)
+                        return;
+                    var tl = TopLevel.GetTopLevel(tb);
+                    var hostPanel = tl is null ? null : FindOrCreateOverlayHost(tl, tb);
+                    if (tl is null || hostPanel is null)
+                        return;
+                    if (EnsurePanel(hostPanel, tl).IsVisible)
+                        return;
+                    Console.WriteLine("[DrmKit] KeyboardOverlay: tap on focused TextBox");
+                    MarkUserInput(tl, tb);
+                    ShowFor(tb);
+                },
+                RoutingStrategies.Tunnel,
+                handledEventsToo: true);
 
             tb.DetachedFromVisualTree += (_, __) =>
             {
@@ -193,6 +180,47 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 if (kbPanel is null) return;
                 MaybeHideIfNoFocusedTextBox(tl!, kbPanel);
             };
+        }
+
+        /// <summary>Show the keyboard for a text box (focus gained, or a tap on an already focused one).</summary>
+        private static void ShowFor(TextBox tb)
+        {
+            var tl = TopLevel.GetTopLevel(tb);
+            if (tl is null) return;
+            var hostPanel = FindOrCreateOverlayHost(tl, tb);
+            if (hostPanel is null)
+            {
+                Console.WriteLine("[DrmKit] KeyboardOverlay: no host Panel");
+                return;
+            }
+
+            var kbPanel = EnsurePanel(hostPanel, tl);
+            var allowProgrammatic = GetOpenOnProgrammaticFocus(tb);
+            var allowKeyboardFocus = GetOpenOnKeyboardFocus(tb);
+            var userInitiated = IsUserInputRecent(tl);
+
+            if (!allowProgrammatic && !allowKeyboardFocus && !userInitiated)
+            {
+                var session = GetSession(kbPanel);
+                session.CurrentTarget = tb;
+                return;
+            }
+
+            var keyboard = kbPanel.Tag as OnScreenKeyboard;
+            keyboard?.Attach(tb);
+            kbPanel.IsVisible = true;
+            var sessionOnShow = GetSession(kbPanel);
+            sessionOnShow.CurrentTarget = tb;
+            ConsumeUserInput(tl);
+            RefreshOcclusion(tb, tl, hostPanel, kbPanel);
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    if (kbPanel.IsVisible)
+                        RefreshOcclusion(tb, tl, hostPanel, kbPanel);
+                },
+                DispatcherPriority.Background);
+            Console.WriteLine("[DrmKit] KeyboardOverlay: show");
         }
 
         private static Panel? FindOrCreateOverlayHost(TopLevel tl, TextBox? sourceTextBox)
