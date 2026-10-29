@@ -61,26 +61,42 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             }
         }
 
+        /// <summary>
+        /// Edit session: «Undo changes» restores the text the field had when the session began. The session
+        /// lives while the field keeps focus — hiding the keyboard («Hide», Esc) does not end it, so
+        /// «erase everything → Hide → tap the field again → Undo changes» brings the old value back.
+        /// It ends on «Done», «Undo changes», when the focus leaves the field or the field leaves the tree.
+        /// </summary>
         private void BeginEditSession(TextBox textBox)
         {
             if (_sessionActive && ReferenceEquals(_sessionTarget, textBox))
                 return;
 
+            EndEditSession();
             _sessionTarget = textBox;
             _sessionOriginalText = textBox.Text ?? string.Empty;
             _sessionActive = true;
+            textBox.LostFocus += OnSessionTargetLeft;
+            textBox.DetachedFromVisualTree += OnSessionTargetLeft;
         }
 
         private void EndEditSession()
         {
+            if (_sessionTarget is { } previous)
+            {
+                previous.LostFocus -= OnSessionTargetLeft;
+                previous.DetachedFromVisualTree -= OnSessionTargetLeft;
+            }
             _sessionActive = false;
             _sessionTarget = null;
             _sessionOriginalText = string.Empty;
         }
 
+        private void OnSessionTargetLeft(object? sender, EventArgs e) => EndEditSession();
+
+        /// <summary>The overlay was hidden. The edit session is kept: it ends with the field's focus.</summary>
         public void OnOverlayHidden()
         {
-            EndEditSession();
         }
 
         private void Rebuild()
@@ -263,8 +279,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     return;
 
                 case OnScreenKeyboardKeys.Hide:
-                    // «Скрыть»: просто убрать клавиатуру — набранное остаётся (как Esc).
-                    CloseAndClearFocus(restoreOriginalText: false);
+                    // «Скрыть»: убрать клавиатуру, набранное остаётся (как Esc). Фокус и сеанс правки — тоже:
+                    // касание поля вернёт клавиатуру, и «Отменить изменения» вернёт значение до начала правки.
+                    HideOverlay();
                     return;
 
                 case OnScreenKeyboardKeys.Cancel:

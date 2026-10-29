@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.0.10] - 2026-10-29
+### Changed
+- «Undo changes» now restores the value the field had before editing began, even if the keyboard was
+  hidden and opened again in between: erase everything → «Hide» → tap the field → «Undo changes» brings
+  the old value back. The edit session lives while the field keeps focus and ends on «Done», «Undo
+  changes», when the focus leaves the field or the field leaves the tree.
+- «Hide» keeps the focus on the field (like `Esc`); a tap on it brings the keyboard back.
+
 ## [12.0.9] - 2026-10-29
 ### Added
 - Digit pad for numeric fields: a text box whose `TextInputOptions.ContentType` is `Digits` / `Pin`
