@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
-## [12.0.10] - 2026-10-29
+## [12.0.10] - 2026-10-30
 ### Changed
 - «Undo changes» now restores the value the field had before editing began, even if the keyboard was
   hidden and opened again in between: erase everything → «Hide» → tap the field → «Undo changes» brings
