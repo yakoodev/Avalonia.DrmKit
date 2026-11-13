@@ -34,6 +34,23 @@
           <SolidColorBrush x:Key="Osk.KeyPressedBackground"        Color="#FFD4D4D4"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyHoverBackground"   Color="#FF3F6AD8"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyPressedBackground" Color="#FF3358BC"/>
+
+          <!-- Новые варианты (12.1): цвета по умолчанию — как у приложения IProSimulator; приложение может
+               переопределить ключи Osk.M.* у себя. -->
+          <SolidColorBrush x:Key="Osk.M.Panel"        Color="#FFF6F8FF"/>
+          <SolidColorBrush x:Key="Osk.M.PanelBorder"  Color="#FFDDE3F3"/>
+          <SolidColorBrush x:Key="Osk.M.Key"          Color="#FFFFFFFF"/>
+          <SolidColorBrush x:Key="Osk.M.KeyBorder"    Color="#FFDDE3F3"/>
+          <SolidColorBrush x:Key="Osk.M.KeyPressed"   Color="#FFE3EAFA"/>
+          <SolidColorBrush x:Key="Osk.M.Mod"          Color="#FFEDF2FF"/>
+          <SolidColorBrush x:Key="Osk.M.ModPressed"   Color="#FFDCE5FA"/>
+          <SolidColorBrush x:Key="Osk.M.Text"         Color="#FF0B0D12"/>
+          <SolidColorBrush x:Key="Osk.M.Text2"        Color="#FF3A4254"/>
+          <SolidColorBrush x:Key="Osk.M.On"           Color="#FFDFF8FD"/>
+          <SolidColorBrush x:Key="Osk.M.Accent"       Color="#FF22C3E6"/>
+          <SolidColorBrush x:Key="Osk.M.Go"           Color="#FF9BEFFD"/>
+          <SolidColorBrush x:Key="Osk.M.GoPressed"    Color="#FF6FE2F7"/>
+          <SolidColorBrush x:Key="Osk.M.GoText"       Color="#FF0B0D12"/>
         </ResourceDictionary>
 
         <!-- Тёмная тема -->
@@ -56,6 +73,21 @@
           <SolidColorBrush x:Key="Osk.KeyPressedBackground"        Color="#FF4A4A4A"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyHoverBackground"   Color="#FF3858AC"/>
           <SolidColorBrush x:Key="Osk.PrimaryKeyPressedBackground" Color="#FF26448C"/>
+
+          <SolidColorBrush x:Key="Osk.M.Panel"        Color="#FF131B2A"/>
+          <SolidColorBrush x:Key="Osk.M.PanelBorder"  Color="#FF2B3A57"/>
+          <SolidColorBrush x:Key="Osk.M.Key"          Color="#FF1A2540"/>
+          <SolidColorBrush x:Key="Osk.M.KeyBorder"    Color="#FF2B3A57"/>
+          <SolidColorBrush x:Key="Osk.M.KeyPressed"   Color="#FF26355A"/>
+          <SolidColorBrush x:Key="Osk.M.Mod"          Color="#FF0F1626"/>
+          <SolidColorBrush x:Key="Osk.M.ModPressed"   Color="#FF1A2540"/>
+          <SolidColorBrush x:Key="Osk.M.Text"         Color="#FFE6ECFF"/>
+          <SolidColorBrush x:Key="Osk.M.Text2"        Color="#FFC3CCE8"/>
+          <SolidColorBrush x:Key="Osk.M.On"           Color="#FF16485A"/>
+          <SolidColorBrush x:Key="Osk.M.Accent"       Color="#FF22D3EE"/>
+          <SolidColorBrush x:Key="Osk.M.Go"           Color="#FF0E7490"/>
+          <SolidColorBrush x:Key="Osk.M.GoPressed"    Color="#FF155E75"/>
+          <SolidColorBrush x:Key="Osk.M.GoText"       Color="#FFFFFFFF"/>
         </ResourceDictionary>
 
       </ResourceDictionary.ThemeDictionaries>
@@ -141,10 +173,122 @@
       <Setter Property="Foreground" Value="{DynamicResource Osk.PrimaryKeyForeground}"/>
     </Style>
 
+    <!-- ===== Новые варианты (OnScreenKeyboardStyle, 12.1): класс modern ставит код ===== -->
+    <Style Selector="local|OnScreenKeyboard.modern">
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Padding" Value="12,8,12,12"/>
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Panel}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.PanelBorder}"/>
+      <Setter Property="BorderThickness" Value="0,1,0,0"/>
+      <Setter Property="CornerRadius" Value="18,18,0,0"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard TextBlock.osk-strip">
+      <Setter Property="FontSize" Value="17"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard TextBlock.osk-strip Run.osk-hint">
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key">
+      <Setter Property="FontSize" Value="22"/>
+      <Setter Property="Padding" Value="4"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Key}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.digit">
+      <Setter Property="FontSize" Value="26"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.mod">
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Mod}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.on">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.On}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.go">
+      <Setter Property="FontSize" Value="19"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Go}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.GoText}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.quiet">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.pill">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="Padding" Value="16,4"/>
+      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key Path.osk-icon">
+      <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key Path.osk-icon-filled">
+      <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
+      <Setter Property="Fill" Value="{Binding $parent[Button].Foreground}"/>
+    </Style>
+    <!-- Наведение/нажатие: непрозрачные цвета (Fluent подменяет фон своим полупрозрачным). -->
+    <Style Selector="local|OnScreenKeyboard Button.osk-key:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Key}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.KeyPressed}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.mod:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Mod}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.mod:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.ModPressed}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.on:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.On}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.go:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Go}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.GoText}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.go:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.GoPressed}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.GoText}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.quiet:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Mod}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+
   </UserControl.Styles>
 
   <!-- Background="Transparent": без фона зазоры между клавишами не ловят касание, оно уходит
        на экран под клавиатурой, фокус теряется — и клавиатура закрывается. -->
+  <Panel Background="Transparent">
   <Grid x:Name="KeysGrid"
         RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
         ColumnDefinitions="*"
@@ -156,4 +300,7 @@
     <UniformGrid Rows="1" Columns="9"  Grid.Row="4" x:Name="Row4" />
     <UniformGrid Rows="1" Columns="5"  Grid.Row="5" x:Name="Row5" />
   </Grid>
+  <!-- Новые варианты строятся кодом (OnScreenKeyboard.Modern.cs). -->
+  <ContentControl x:Name="ModernRoot" IsVisible="False" Focusable="False" IsTabStop="False"/>
+  </Panel>
 </UserControl>

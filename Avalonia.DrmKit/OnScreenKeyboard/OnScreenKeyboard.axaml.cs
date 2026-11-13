@@ -42,6 +42,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
             KeyboardLayoutManager.CurrentChanged += (_, __) => Rebuild();
             KeyboardLayoutManager.CapsChanged += (_, on) => { _caps = on; Rebuild(); };
+            OnScreenKeyboardStyle.Changed += (_, __) => Rebuild();
 
             Rebuild();
         }
@@ -54,11 +55,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             // The field asks for digits (TextInputOptions.ContentType = Digits / Number / Pin) — show the
             // digit pad instead of the letter layout.
             var mode = OnScreenKeyboardKeys.ModeFor(TextInputOptions.GetContentType(textBox));
-            if (mode != _mode)
-            {
-                _mode = mode;
+            var changed = mode != _mode;
+            _mode = mode;
+            PrepareModern(textBox);
+            // The new variants show the field's name and limits in the strip — rebuild for every field.
+            if (changed || IsModern)
                 Rebuild();
-            }
         }
 
         /// <summary>
@@ -101,6 +103,21 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
         private void Rebuild()
         {
+            var modern = IsModern;
+            Classes.Set("modern", modern);
+            if (this.Find<Grid>("KeysGrid") is { } classicGrid)
+                classicGrid.IsVisible = !modern;
+            if (this.Find<ContentControl>("ModernRoot") is { } modernRoot)
+            {
+                modernRoot.IsVisible = modern;
+                if (modern)
+                {
+                    BuildModern(modernRoot);
+                    return;
+                }
+                modernRoot.Content = null;
+            }
+
             var rows = _mode == OnScreenKeyboardMode.Text
                 ? KeyboardLayoutManager.GetCurrent().Rows
                 : OnScreenKeyboardKeys.DigitRows(withSeparator: _mode == OnScreenKeyboardMode.Decimal);
@@ -250,6 +267,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             }
             if (_target is null) return;
 
+            if (IsModern && HandleModernKey(key))
+            {
+                _target.Focus();
+                return;
+            }
+
             switch (key)
             {
                 case "caps":
@@ -259,10 +282,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
                 case "space":
                     InsertText(" ");
+                    AfterModernInput();
                     return;
 
                 case "<-": // Backspace
                     Backspace();
+                    AfterModernInput();
                     return;
 
                 case "del": // удалить весь текст
@@ -301,8 +326,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     return;
 
                 default:
-                    var text = _caps ? key.ToUpperInvariant() : key;
+                    var text = _caps || _shift ? key.ToUpperInvariant() : key;
                     InsertText(text);
+                    AfterModernInput();
                     _target.Focus();
                     return;
             }

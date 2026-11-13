@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [Unreleased] — 12.1.0 (prototype)
+### Added
+- `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`: new keyboard looks next to the classic one (default
+  stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» in the bottom row) and
+  `ActionColumn` (⌫ / «Undo changes» / a large «Done» in a right column). Digits: `Pad` (1-2-3 on top,
+  ⌫ next to 0, «Done» on the side) and `Row` (two low rows: 1…0 and ⌫, then −1 / +1 and the actions).
+- The new looks: app-like colours and radii (`Osk.M.*` resources, light and dark), 44–58 px keys by screen
+  height, a strip with the field name, its limits and the value before editing («Вес · от 40 до 133 · было 65»)
+  and a «Hide» pill; the UI language first; one-shot ⇧ (double tap — Caps Lock); a «?123» layer instead of a
+  fixed row of symbols; the full Russian alphabet (х ъ ж э ё were missing).
+- `OnScreenKeyboardField.Title` / `Hint` / `CapitalizeWords` attached properties for the text box.
+
 ## [12.0.10] - 2026-10-30
 ### Changed
 - «Undo changes» now restores the value the field had before editing began, even if the keyboard was
