@@ -6,7 +6,8 @@ The format follows Keep a Changelog and SemVer.
 
 ## [Unreleased] — 12.1.0 (prototype)
 ### Changed (13.11)
-- `Pad`: «Done» is one key high, level with 0, «Undo changes» above it (the full-height key was too big).
+- `Pad`: a centred 4×4 grid — 1-2-3 on top, ⌫ and the separator in the right column, 0 after 9,
+  «Undo changes» and «Done» in a row under the digits (the side column of actions was in the way).
 ### Added
 - `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`: new keyboard looks next to the classic one (default
   stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» in the bottom row) and

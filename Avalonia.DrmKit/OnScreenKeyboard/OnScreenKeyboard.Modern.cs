@@ -192,33 +192,16 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 return Stack(digits, actions);
             }
 
+            // Сетка 4×4 по центру: ⌫ и разделитель в правом столбце, «Отменить изменения» и «Готово»
+            // отдельной строкой под цифрами (вариант Е, решение 13.11). У целых полей место разделителя пустое.
             var pad = Stack(
-                Row(h, ("1", 1, "digit"), ("2", 1, "digit"), ("3", 1, "digit")),
-                Row(h, ("4", 1, "digit"), ("5", 1, "digit"), ("6", 1, "digit")),
-                Row(h, ("7", 1, "digit"), ("8", 1, "digit"), ("9", 1, "digit")),
-                Row(h, (sep, 1, "mod"), ("0", 1, "digit"), (OnScreenKeyboardKeys.Backspace, 1, "mod")));
-
-            // «Готово» высотой в одну клавишу — на уровне «0», над ней «Отменить изменения» (решение 13.11:
-            // во весь столбец кнопка выходила слишком большой).
-            var column = new Grid { RowDefinitions = new RowDefinitions($"*,{h},{h}"), RowSpacing = Gap };
-            var undo = MakeKey(OnScreenKeyboardKeys.Cancel, "quiet");
-            var done = MakeKey(OnScreenKeyboardKeys.Enter, "go");
-            Grid.SetRow(undo, 1);
-            Grid.SetRow(done, 2);
-            column.Children.Add(undo);
-            column.Children.Add(done);
-
-            var split = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("4*,1.7*"),
-                ColumnSpacing = Gap + 6,
-                MaxWidth = 660,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-            };
-            Grid.SetColumn(column, 1);
-            split.Children.Add(pad);
-            split.Children.Add(column);
-            return split;
+                Row(h, ("1", 1, "digit"), ("2", 1, "digit"), ("3", 1, "digit"), (OnScreenKeyboardKeys.Backspace, 1, "mod")),
+                Row(h, ("4", 1, "digit"), ("5", 1, "digit"), ("6", 1, "digit"), (sep, 1, "mod")),
+                Row(h, ("7", 1, "digit"), ("8", 1, "digit"), ("9", 1, "digit"), ("0", 1, "digit")),
+                Row(h, (OnScreenKeyboardKeys.Cancel, 2, "quiet"), (OnScreenKeyboardKeys.Enter, 2, "go")));
+            pad.MaxWidth = 520;
+            pad.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return pad;
         }
 
         // ---------- building blocks ----------

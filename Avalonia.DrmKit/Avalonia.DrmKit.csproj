@@ -6,7 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
-		<Version>12.1.0-proto.3</Version>
+		<Version>12.1.0-proto.4</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 

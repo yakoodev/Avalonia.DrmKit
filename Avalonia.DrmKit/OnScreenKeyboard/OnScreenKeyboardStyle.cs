@@ -20,7 +20,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
     {
         /// <summary>The pad up to 12.0.10: 7-8-9 on top, four action keys in the right column.</summary>
         Classic,
-        /// <summary>Phone pad 1-2-3 on top, ⌫ next to 0, «Done» on the side.</summary>
+        /// <summary>4×4 grid 1-2-3 on top, ⌫ and the separator in the right column, «Undo changes» and «Done» in a row below the digits.</summary>
         Pad,
         /// <summary>Two low rows: digits 1…0 and ⌫, then −1 / +1 and the actions.</summary>
         Row,
