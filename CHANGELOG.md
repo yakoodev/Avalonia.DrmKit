@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 The format follows Keep a Changelog and SemVer.
 
 ## [Unreleased] — 12.1.0 (prototype)
+### Changed (13.11)
+- `Pad`: «Done» is one key high, level with 0, «Undo changes» above it (the full-height key was too big).
 ### Added
 - `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`: new keyboard looks next to the classic one (default
   stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» in the bottom row) and

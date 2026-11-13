@@ -198,18 +198,21 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 Row(h, ("7", 1, "digit"), ("8", 1, "digit"), ("9", 1, "digit")),
                 Row(h, (sep, 1, "mod"), ("0", 1, "digit"), (OnScreenKeyboardKeys.Backspace, 1, "mod")));
 
-            var column = new Grid { RowDefinitions = new RowDefinitions($"{h},*"), RowSpacing = Gap };
+            // «Готово» высотой в одну клавишу — на уровне «0», над ней «Отменить изменения» (решение 13.11:
+            // во весь столбец кнопка выходила слишком большой).
+            var column = new Grid { RowDefinitions = new RowDefinitions($"*,{h},{h}"), RowSpacing = Gap };
             var undo = MakeKey(OnScreenKeyboardKeys.Cancel, "quiet");
             var done = MakeKey(OnScreenKeyboardKeys.Enter, "go");
-            Grid.SetRow(done, 1);
+            Grid.SetRow(undo, 1);
+            Grid.SetRow(done, 2);
             column.Children.Add(undo);
             column.Children.Add(done);
 
             var split = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("4*,2.2*"),
+                ColumnDefinitions = new ColumnDefinitions("4*,1.7*"),
                 ColumnSpacing = Gap + 6,
-                MaxWidth = 720,
+                MaxWidth = 660,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             Grid.SetColumn(column, 1);
