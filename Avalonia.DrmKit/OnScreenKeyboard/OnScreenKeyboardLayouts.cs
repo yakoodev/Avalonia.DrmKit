@@ -42,6 +42,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
         /// <summary>Widest the two-row pad gets, px: wider keys than ~110 px are harder to hit in a row, not easier.</summary>
         public const double TwoRowsMaxWidth = 880;
+        /// <summary>
+        /// Two-row pad: width of «Undo changes» / «Done» in digit keys. At 1.7 the key was 185 px on a 1024 px
+        /// screen and «Отменить изменения» wrapped into two lines; at 2 it is 209 px and the caption fits.
+        /// </summary>
+        public const double ActionWeight = 2;
         /// <summary>Widest the 4×4 pad gets, px.</summary>
         public const double PadMaxWidth = 520;
 
@@ -118,8 +123,8 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 case OnScreenKeyboardDigitVariant.TwoRows:
                     return new[]
                     {
-                        new[] { D("1"), D("2"), D("3"), D("4"), D("5"), back, new OnScreenKeyboardKey(OnScreenKeyboardKeys.Cancel, 1.7, "quiet") },
-                        new[] { D("6"), D("7"), D("8"), D("9"), D("0"), separator, new OnScreenKeyboardKey(OnScreenKeyboardKeys.Enter, 1.7, "go") },
+                        new[] { D("1"), D("2"), D("3"), D("4"), D("5"), back, new OnScreenKeyboardKey(OnScreenKeyboardKeys.Cancel, ActionWeight, "quiet") },
+                        new[] { D("6"), D("7"), D("8"), D("9"), D("0"), separator, new OnScreenKeyboardKey(OnScreenKeyboardKeys.Enter, ActionWeight, "go") },
                     };
 
                 case OnScreenKeyboardDigitVariant.Pad:

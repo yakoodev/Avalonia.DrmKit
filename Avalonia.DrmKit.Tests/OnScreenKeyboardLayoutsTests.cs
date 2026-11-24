@@ -43,6 +43,8 @@ public sealed class OnScreenKeyboardLayoutsTests
         Assert.Equal(OnScreenKeyboardKeys.Cancel, rows[0][6].Token);
         Assert.Equal(OnScreenKeyboardKeys.Enter, rows[1][6].Token);
         Assert.Equal("go", rows[1][6].Class);
+        // «Undo changes» has to fit on one line on a 1024 px screen: the action column is two digit keys wide.
+        Assert.Equal(2, rows[0][6].Weight);
         // The two rows line up: the same widths column by column.
         Assert.Equal(rows[0].Select(k => k.Weight), rows[1].Select(k => k.Weight));
     }
