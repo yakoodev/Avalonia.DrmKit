@@ -6,6 +6,9 @@ The format follows Keep a Changelog and SemVer.
 
 ## [Unreleased] — 12.1.0 (prototype)
 ### Changed (24.11)
+- Digits: new look `Calculator` — 7-8-9 on top, a wide 0 and the separator next to it at the bottom, and a
+  column on the right: ⌫, «Undo changes», a «Done» two rows high. At most 620 px wide. This is the look the
+  IProSimulator kiosk uses; `TwoRows` and `Pad` stay as options.
 - Digits: new look `TwoRows` — two rows of five digits, then ⌫ over the decimal separator, then «Undo changes»
   over «Done». The lowest pad (two key rows), at most 880 px wide. `Pad` (the 4×4 grid: ⌫ and the separator
   in the right column, 0 after 9, the actions in a row under the digits) stays as an option.

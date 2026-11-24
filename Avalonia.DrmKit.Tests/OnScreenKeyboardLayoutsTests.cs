@@ -124,6 +124,82 @@ public sealed class OnScreenKeyboardLayoutsTests
         Assert.True(OnScreenKeyboardLayouts.TwoRowsMaxWidth > OnScreenKeyboardLayouts.PadMaxWidth);
     }
 
+    // ---------- digits, calculator ----------
+
+    private static OnScreenKeyboardCell Cell(OnScreenKeyboardGridLayout grid, string token) => Assert.Single(grid.Cells, c => c.Key.Token == token);
+
+    [Fact]
+    public void Calculator_SevenEightNineOnTop_WideZero_SeparatorNextToIt_ActionsInTheRightColumn()
+    {
+        var grid = WithCulture("ru-RU", () => OnScreenKeyboardLayouts.CalculatorDigits(withSeparator: true, dimSeparator: true));
+
+        Assert.Equal(4, grid.Rows);
+        Assert.Equal(new[] { 1, 1, 1, OnScreenKeyboardLayouts.CalculatorActionWeight }, grid.Columns);
+        var expected = new[] { new[] { "7", "8", "9" }, new[] { "4", "5", "6" }, new[] { "1", "2", "3" } };
+        for (var row = 0; row < 3; row++)
+            for (var column = 0; column < 3; column++)
+                Assert.Equal((row, column, 1, 1), (Cell(grid, expected[row][column]).Row, Cell(grid, expected[row][column]).Column,
+                                                    Cell(grid, expected[row][column]).RowSpan, Cell(grid, expected[row][column]).ColumnSpan));
+
+        // The bottom row: 0 two keys wide, the separator right of it.
+        Assert.Equal((3, 0, 1, 2), (Cell(grid, "0").Row, Cell(grid, "0").Column, Cell(grid, "0").RowSpan, Cell(grid, "0").ColumnSpan));
+        Assert.Equal((3, 2), (Cell(grid, ",").Row, Cell(grid, ",").Column));
+
+        // The right column: backspace, «Undo changes», «Done» two rows high.
+        Assert.Equal((0, 3), (Cell(grid, OnScreenKeyboardKeys.Backspace).Row, Cell(grid, OnScreenKeyboardKeys.Backspace).Column));
+        Assert.Equal((1, 3), (Cell(grid, OnScreenKeyboardKeys.Cancel).Row, Cell(grid, OnScreenKeyboardKeys.Cancel).Column));
+        var done = Cell(grid, OnScreenKeyboardKeys.Enter);
+        Assert.Equal((2, 3, 2, 1), (done.Row, done.Column, done.RowSpan, done.ColumnSpan));
+        Assert.Equal("go", done.Key.Class);
+        Assert.DoesNotContain(grid.Cells, c => c.Key.Token == OnScreenKeyboardKeys.Hide);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void Calculator_CellsFillTheGridExactlyOnce(bool withSeparator, bool dimSeparator)
+    {
+        var grid = OnScreenKeyboardLayouts.CalculatorDigits(withSeparator, dimSeparator);
+        var taken = new int[grid.Rows, grid.Columns.Length];
+
+        foreach (var cell in grid.Cells)
+            for (var row = cell.Row; row < cell.Row + cell.RowSpan; row++)
+                for (var column = cell.Column; column < cell.Column + cell.ColumnSpan; column++)
+                    taken[row, column]++;   // throws if a key sticks out of the grid
+
+        foreach (var count in taken)
+            Assert.Equal(1, count);
+        foreach (var digit in "0123456789")
+            Assert.Single(grid.Cells, c => c.Key.Token == digit.ToString());
+    }
+
+    [Theory]
+    [InlineData("ru-RU", ",")]
+    [InlineData("en-US", ".")]
+    public void Calculator_SeparatorTypesTheCultureSeparator_IsDimmedOrEmptyInWholeNumberFields(string culture, string expected)
+    {
+        var fraction = WithCulture(culture, () => OnScreenKeyboardLayouts.CalculatorDigits(withSeparator: true, dimSeparator: true));
+        var dimmed = WithCulture(culture, () => OnScreenKeyboardLayouts.CalculatorDigits(withSeparator: false, dimSeparator: true));
+        var empty = WithCulture(culture, () => OnScreenKeyboardLayouts.CalculatorDigits(withSeparator: false, dimSeparator: false));
+
+        Assert.True(Cell(fraction, expected).Key.Enabled);
+        var off = Assert.Single(dimmed.Cells, c => !c.Key.Enabled);
+        Assert.Equal(expected, off.Key.Token);
+        Assert.Equal((Cell(fraction, expected).Row, Cell(fraction, expected).Column), (off.Row, off.Column));
+        var blank = Assert.Single(empty.Cells, c => c.Key.IsBlank);
+        Assert.Equal((off.Row, off.Column), (blank.Row, blank.Column));
+        Assert.DoesNotContain(empty.Cells, c => c.Key.Token == expected);
+    }
+
+    [Fact]
+    public void Calculator_IsAGrid_NotRows()
+    {
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => OnScreenKeyboardLayouts.Digits(OnScreenKeyboardDigitVariant.Calculator, true, true));
+        Assert.Equal(OnScreenKeyboardLayouts.CalculatorMaxWidth, OnScreenKeyboardLayouts.DigitsMaxWidth(OnScreenKeyboardDigitVariant.Calculator));
+        Assert.Equal(OnScreenKeyboardLayouts.CalculatorMaxWidth, OnScreenKeyboardLayouts.CalculatorDigits(true, true).MaxWidth);
+    }
+
     // ---------- letters ----------
 
     [Theory]

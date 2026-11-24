@@ -15,6 +15,16 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public bool IsBlank => Token.Length == 0;
     }
 
+    /// <summary>A key of a grid layout: where it stands and how many cells it takes.</summary>
+    public readonly record struct OnScreenKeyboardCell(OnScreenKeyboardKey Key, int Row, int Column, int RowSpan = 1, int ColumnSpan = 1);
+
+    /// <summary>A digit look that is a grid with keys spanning rows or columns (a tall «Done», a wide 0).</summary>
+    /// <param name="Columns">Relative widths of the columns.</param>
+    /// <param name="Rows">Number of key rows.</param>
+    /// <param name="Cells">The keys; a blank key keeps its cell empty.</param>
+    /// <param name="MaxWidth">Widest the grid gets, px.</param>
+    public sealed record OnScreenKeyboardGridLayout(double[] Columns, int Rows, OnScreenKeyboardCell[] Cells, double MaxWidth);
+
     /// <summary>
     /// Rows of the new keyboard looks (<see cref="OnScreenKeyboardStyle"/>). Kept free of UI types so the
     /// layouts can be unit-tested; <c>OnScreenKeyboard.Modern.cs</c> only turns them into buttons.
@@ -26,6 +36,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
     /// Digits, <see cref="OnScreenKeyboardDigitVariant.TwoRows"/> (chosen 24.11.2026): two rows of five digits,
     /// then ⌫ over the decimal separator, then «Undo changes» over «Done». It is the lowest pad, so it covers
     /// the least of the screen.
+    ///
+    /// Digits, <see cref="OnScreenKeyboardDigitVariant.Calculator"/> (the owner's final choice, 24.11.2026): 7-8-9
+    /// on top like a calculator and a PC numpad, a wide 0 with the separator next to it at the bottom, and a
+    /// column on the right — ⌫, «Undo changes», a «Done» two rows high. It is a grid, not rows: see
+    /// <see cref="CalculatorDigits"/>.
     /// </summary>
     public static class OnScreenKeyboardLayouts
     {
@@ -49,6 +64,13 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public const double ActionWeight = 2;
         /// <summary>Widest the 4×4 pad gets, px.</summary>
         public const double PadMaxWidth = 520;
+        /// <summary>
+        /// Widest the calculator pad gets, px. With the action column 1.6 digit keys wide this makes it 208 px:
+        /// «Отменить изменения» fits on one line (at 185 px it wrapped).
+        /// </summary>
+        public const double CalculatorMaxWidth = 620;
+        /// <summary>Calculator pad: width of the action column in digit keys.</summary>
+        public const double CalculatorActionWeight = 1.6;
 
         /// <summary>Letter rows of the <see cref="OnScreenKeyboardTextVariant.Phone"/> look.</summary>
         /// <param name="layout"><c>ru</c> or <c>en</c>.</param>
@@ -111,11 +133,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         /// </param>
         public static OnScreenKeyboardKey[][] Digits(OnScreenKeyboardDigitVariant variant, bool withSeparator, bool dimSeparator)
         {
-            var separator = withSeparator
-                ? new OnScreenKeyboardKey(OnScreenKeyboardKeys.DecimalSeparator, 1, "digit")
-                : dimSeparator
-                    ? new OnScreenKeyboardKey(OnScreenKeyboardKeys.DecimalSeparator, 1, "digit", Enabled: false)
-                    : new OnScreenKeyboardKey(OnScreenKeyboardKeys.Blank);
+            var separator = Separator(withSeparator, dimSeparator);
             var back = new OnScreenKeyboardKey(OnScreenKeyboardKeys.Backspace, 1, "mod");
 
             switch (variant)
@@ -137,13 +155,51 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     };
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(variant), variant, "The classic pad is built from OnScreenKeyboardKeys.DigitRows.");
+                    throw new ArgumentOutOfRangeException(nameof(variant), variant, "Not a row layout: the classic pad is built from OnScreenKeyboardKeys.DigitRows, the calculator from CalculatorDigits.");
             }
         }
 
+        /// <summary>
+        /// The <see cref="OnScreenKeyboardDigitVariant.Calculator"/> look:
+        /// <code>
+        /// 7 8 9 ⌫
+        /// 4 5 6 Undo changes
+        /// 1 2 3 Done
+        /// 0 0 , Done
+        /// </code>
+        /// </summary>
+        /// <param name="withSeparator">The field takes fractions: the separator key types the culture's separator.</param>
+        /// <param name="dimSeparator">Whole-number fields: true — the separator stays in place dimmed, false — its cell is empty.</param>
+        public static OnScreenKeyboardGridLayout CalculatorDigits(bool withSeparator, bool dimSeparator)
+        {
+            var separator = Separator(withSeparator, dimSeparator);
+            var cells = new[]
+            {
+                new OnScreenKeyboardCell(D("7"), 0, 0), new OnScreenKeyboardCell(D("8"), 0, 1), new OnScreenKeyboardCell(D("9"), 0, 2),
+                new OnScreenKeyboardCell(new OnScreenKeyboardKey(OnScreenKeyboardKeys.Backspace, 1, "mod"), 0, 3),
+                new OnScreenKeyboardCell(D("4"), 1, 0), new OnScreenKeyboardCell(D("5"), 1, 1), new OnScreenKeyboardCell(D("6"), 1, 2),
+                new OnScreenKeyboardCell(new OnScreenKeyboardKey(OnScreenKeyboardKeys.Cancel, 1, "quiet"), 1, 3),
+                new OnScreenKeyboardCell(D("1"), 2, 0), new OnScreenKeyboardCell(D("2"), 2, 1), new OnScreenKeyboardCell(D("3"), 2, 2),
+                new OnScreenKeyboardCell(new OnScreenKeyboardKey(OnScreenKeyboardKeys.Enter, 1, "go"), 2, 3, RowSpan: 2),
+                new OnScreenKeyboardCell(D("0"), 3, 0, ColumnSpan: 2),
+                new OnScreenKeyboardCell(separator, 3, 2),
+            };
+            return new OnScreenKeyboardGridLayout(new[] { 1, 1, 1, CalculatorActionWeight }, 4, cells, CalculatorMaxWidth);
+        }
+
         /// <summary>Widest a digit look gets, px: the pad is centred once the screen is wider.</summary>
-        public static double DigitsMaxWidth(OnScreenKeyboardDigitVariant variant)
-            => variant == OnScreenKeyboardDigitVariant.TwoRows ? TwoRowsMaxWidth : PadMaxWidth;
+        public static double DigitsMaxWidth(OnScreenKeyboardDigitVariant variant) => variant switch
+        {
+            OnScreenKeyboardDigitVariant.TwoRows => TwoRowsMaxWidth,
+            OnScreenKeyboardDigitVariant.Calculator => CalculatorMaxWidth,
+            _ => PadMaxWidth,
+        };
+
+        private static OnScreenKeyboardKey Separator(bool withSeparator, bool dimSeparator) => withSeparator
+            ? new OnScreenKeyboardKey(OnScreenKeyboardKeys.DecimalSeparator, 1, "digit")
+            : dimSeparator
+                ? new OnScreenKeyboardKey(OnScreenKeyboardKeys.DecimalSeparator, 1, "digit", Enabled: false)
+                : new OnScreenKeyboardKey(OnScreenKeyboardKeys.Blank);
 
         private static OnScreenKeyboardKey D(string digit) => new(digit, 1, "digit");
 

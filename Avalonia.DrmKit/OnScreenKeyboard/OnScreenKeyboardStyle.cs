@@ -25,6 +25,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         Pad,
         /// <summary>Two rows of five digits, then ⌫ over the separator, then «Undo changes» over «Done». The lowest pad.</summary>
         TwoRows,
+        /// <summary>
+        /// Like a calculator: 7-8-9 on top, a wide 0 and the separator next to it at the bottom; ⌫, «Undo changes»
+        /// and a tall «Done» in a column on the right.
+        /// </summary>
+        Calculator,
     }
 
     /// <summary>

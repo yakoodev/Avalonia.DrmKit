@@ -119,6 +119,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         private Control BuildDigits(double h)
         {
             var variant = OnScreenKeyboardStyle.DigitVariant;
+            if (variant == OnScreenKeyboardDigitVariant.Calculator)
+                return BuildGrid(h, OnScreenKeyboardLayouts.CalculatorDigits(
+                    withSeparator: _mode == OnScreenKeyboardMode.Decimal,
+                    dimSeparator: OnScreenKeyboardStyle.DimSeparatorInIntegerFields));
+
             var rows = OnScreenKeyboardLayouts.Digits(variant,
                 withSeparator: _mode == OnScreenKeyboardMode.Decimal,
                 dimSeparator: OnScreenKeyboardStyle.DimSeparatorInIntegerFields);
@@ -130,6 +135,29 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         }
 
         // ---------- building blocks ----------
+
+        /// <summary>Раскладка-сетка: клавиши могут занимать два ряда (высокое «Готово») или два столбца (широкий ноль).</summary>
+        private Grid BuildGrid(double h, OnScreenKeyboardGridLayout layout)
+        {
+            // Stretch + MaxWidth: растянутый элемент, упёршийся в MaxWidth, встаёт по центру.
+            var grid = new Grid { RowSpacing = Gap, ColumnSpacing = Gap, MaxWidth = layout.MaxWidth, HorizontalAlignment = HorizontalAlignment.Stretch };
+            foreach (var weight in layout.Columns)
+                grid.ColumnDefinitions.Add(new ColumnDefinition(weight, GridUnitType.Star));
+            for (var row = 0; row < layout.Rows; row++)
+                grid.RowDefinitions.Add(new RowDefinition(h, GridUnitType.Pixel));
+            foreach (var cell in layout.Cells)
+            {
+                if (cell.Key.IsBlank)
+                    continue;
+                var key = MakeKey(cell.Key);
+                Grid.SetRow(key, cell.Row);
+                Grid.SetColumn(key, cell.Column);
+                Grid.SetRowSpan(key, cell.RowSpan);
+                Grid.SetColumnSpan(key, cell.ColumnSpan);
+                grid.Children.Add(key);
+            }
+            return grid;
+        }
 
         private static StackPanel Stack(params Control[] rows)
         {
