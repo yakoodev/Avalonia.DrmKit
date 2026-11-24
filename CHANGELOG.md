@@ -4,30 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
-## [Unreleased] — 12.1.0 (prototype)
-### Changed (24.11)
-- Digits: new look `Calculator` — 7-8-9 on top, a wide 0 and the separator next to it at the bottom, and a
-  column on the right: ⌫, «Undo changes», a «Done» two rows high. At most 620 px wide. This is the look the
-  IProSimulator kiosk uses; `TwoRows` and `Pad` stay as options.
-- Digits: new look `TwoRows` — two rows of five digits, then ⌫ over the decimal separator, then «Undo changes»
-  over «Done». The lowest pad (two key rows), at most 880 px wide. `Pad` (the 4×4 grid: ⌫ and the separator
-  in the right column, 0 after 9, the actions in a row under the digits) stays as an option.
-- Whole-number fields in the new digit looks: the separator key stays in its place dimmed and cannot be
-  pressed, so the keys do not jump from field to field (`OnScreenKeyboardStyle.DimSeparatorInIntegerFields`,
-  default `true`; `false` leaves its cell empty).
-- Letters `Phone`: «Undo changes» moved from the bottom row to the strip above the keys, next to «Hide».
-  The space bar is wider and the bottom row ends with «Done» only.
-- Removed the looks that were not chosen: letters `ActionColumn`, digits `Row` (1…0 in one row and −1 / +1).
-- `OnScreenKeyboardLayouts` / `OnScreenKeyboardKey`: the rows of the new looks as plain data, covered by tests.
+## [12.1.0] - 2026-11-24
 ### Added
-- `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`: new keyboard looks next to the classic one (default
-  stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» at the end of the bottom
-  row). Digits: `TwoRows` and `Pad`.
+- New on-screen keyboard looks next to the classic one: `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`.
+  Both default to `Classic`, so an app that sets nothing keeps the keyboard of 12.0.10; changing a setting
+  rebuilds an open keyboard at once.
+  - Letters, `Phone`: ⇧ and ⌫ at the ends of the third row, a wide space bar, «Done» at the end of the bottom
+    row, «Undo changes» in the strip above the keys next to «Hide» (next to «Done» it was hit by mistake).
+  - Digits, `Calculator`: 7-8-9 on top, a wide 0 and the decimal separator next to it at the bottom, and a
+    column on the right — ⌫, «Undo changes», a «Done» two rows high. At most 620 px wide.
+  - Digits, `TwoRows`: two rows of five digits, then ⌫ over the separator, then «Undo changes» over «Done».
+    The lowest pad (two key rows), at most 880 px wide.
+  - Digits, `Pad`: a 4×4 grid — 1-2-3 on top, ⌫ and the separator in the right column, 0 after 9, the actions
+    in a row under the digits.
 - The new looks: app-like colours and radii (`Osk.M.*` resources, light and dark), 44–58 px keys by screen
   height, a strip with the field name, its limits and the value before editing («Вес · от 40 до 133 · было 65»)
   and a «Hide» pill; the UI language first; one-shot ⇧ (double tap — Caps Lock); a «?123» layer instead of a
   fixed row of symbols; the full Russian alphabet (х ъ ж э ё were missing).
+- Whole-number fields in the new digit looks: the decimal separator key stays in its place dimmed and cannot
+  be pressed, so the keys do not jump from field to field (`OnScreenKeyboardStyle.DimSeparatorInIntegerFields`,
+  default `true`; `false` leaves its cell empty). In fields that take fractions the key types the separator of
+  the current culture.
 - `OnScreenKeyboardField.Title` / `Hint` / `CapitalizeWords` attached properties for the text box.
+- `OnScreenKeyboardLayouts`, `OnScreenKeyboardKey`, `OnScreenKeyboardGridLayout`: the rows and grids of the new
+  looks as plain data, covered by unit tests.
 
 ## [12.0.10] - 2026-10-30
 ### Changed

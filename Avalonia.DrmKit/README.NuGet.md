@@ -83,6 +83,31 @@ Layouts:
 - switching: **Alt+Shift** on physical keyboard or button on the overlay;
 - CapsLock is synchronized both ways.
 
+Looks (since 12.1.0). The classic keyboard stays the default; pick the new looks once at startup:
+
+```csharp
+using Avalonia.DrmKit.OnScreenKeyboard;
+
+OnScreenKeyboardStyle.TextVariant = OnScreenKeyboardTextVariant.Phone;          // phone-like letters
+OnScreenKeyboardStyle.DigitVariant = OnScreenKeyboardDigitVariant.Calculator;   // or TwoRows, Pad
+```
+
+- letters `Phone`: one-shot shift (double tap — Caps Lock), digits and punctuation on a «?123» layer,
+  «Done» at the end of the bottom row, «Undo changes» and «Hide» in a strip above the keys;
+- digits: `Calculator` (7-8-9 on top, a wide 0, a tall «Done» on the right), `TwoRows` (two rows of five,
+  the lowest pad), `Pad` (a 4×4 grid). The digit pad opens for a `TextBox` whose
+  `TextInputOptions.ContentType` is `Digits` / `Pin`; with `Number` the decimal separator key types the
+  culture's separator, in whole-number fields it stays in place dimmed (`DimSeparatorInIntegerFields`);
+- the strip shows the field name, a hint and the value before editing:
+
+```xml
+<TextBox osk:KeyboardOverlay.IsEnabled="True"
+         osk:OnScreenKeyboardField.Title="Weight, kg"
+         osk:OnScreenKeyboardField.Hint="40 to 133" />
+<TextBox osk:KeyboardOverlay.IsEnabled="True"
+         osk:OnScreenKeyboardField.CapitalizeWords="True" />   <!-- names: every word capitalised -->
+```
+
 ---
 
 ## Soft cursor & auto‑hide

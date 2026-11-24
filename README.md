@@ -209,6 +209,31 @@ DRMKIT_DEBUG=1 ./YourApp --system=drm --drm=card0
 - переключение: `Alt+Shift` (физическая клавиатура) + кнопка на самой клавиатуре;
 - CapsLock синхронизирован с физическим.
 
+Вид клавиатуры (с 12.1.0). По умолчанию остаётся прежняя клавиатура; новый вид включается один раз при старте:
+
+```csharp
+using Avalonia.DrmKit.OnScreenKeyboard;
+
+OnScreenKeyboardStyle.TextVariant = OnScreenKeyboardTextVariant.Phone;          // буквы «как в телефоне»
+OnScreenKeyboardStyle.DigitVariant = OnScreenKeyboardDigitVariant.Calculator;   // или TwoRows, Pad
+```
+
+- буквы `Phone`: ⇧ на одну букву (двойное нажатие держит заглавные), цифры и знаки под «?123»,
+  «Готово» в конце нижнего ряда, «Отменить изменения» и «Скрыть» в полоске над клавишами;
+- цифры: `Calculator` (7-8-9 сверху, широкий ноль, высокое «Готово» справа), `TwoRows` (два ряда по пять,
+  самая низкая), `Pad` (сетка 4×4). Цифровая открывается у поля с `TextInputOptions.ContentType` =
+  `Digits` / `Pin`; у `Number` работает клавиша десятичного разделителя (запятая или точка по культуре),
+  в целых полях она стоит на месте приглушённой (`DimSeparatorInIntegerFields`);
+- полоска над клавишами показывает название поля, подсказку и значение до правки:
+
+```xml
+<TextBox osk:KeyboardOverlay.IsEnabled="True"
+         osk:OnScreenKeyboardField.Title="Вес, кг"
+         osk:OnScreenKeyboardField.Hint="от 40 до 133" />
+<TextBox osk:KeyboardOverlay.IsEnabled="True"
+         osk:OnScreenKeyboardField.CapitalizeWords="True" />   <!-- имя: каждое слово с заглавной -->
+```
+
 ### Софт‑курсор
 
 `UseDrmSoftCursor()` добавляет в визуальное дерево слой `SoftCursorLayer`.
@@ -287,7 +312,8 @@ It provides the missing input layer you usually get from a windowing system:
 
 - SmartPlatform (DRM / desktop detection, CLI options, graceful fallback).
 - evdev keyboard (EN/RU, Alt+Shift, CapsLock sync, text input).
-- On‑screen keyboard overlay for `TextBox`.
+- On‑screen keyboard overlay for `TextBox`; since 12.1.0 with new looks (`OnScreenKeyboardStyle`): phone-like
+  letters, calculator / two-row / 4×4 digit pads with a decimal separator.
 - Soft cursor overlay with auto‑hide and proper hit‑testing.
 - evdev mouse fallback for DRM.
 
