@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog and SemVer.
 
+## [12.1.1] - 2026-11-24
+### Fixed
+- `KeyboardOverlay`: the field under the keyboard was lifted by a random amount, so the keyboard could still
+  cover it — on an 800×600 screen the digit pad hid half of the field (the lift was 22 px instead of 131), on
+  1024×600 the field ended flush with the keyboard. The lift is recalculated several times in a row (on show,
+  after the layout, when the keyboard gets its height), and each pass measured the field before the layout pass
+  that follows restoring and scrolling; the result depended on the order of the passes. The short classic pad
+  hid the bug, the 12.1.0 looks are 305 px high. Now the layout runs before every measurement and the keyboard
+  height is re-read after it.
+- The lift no longer scrolls the field out of its own scroll area (its top was cut off behind the edge of the
+  area): scrolling stops 8 px from the top of the area and the rest of the lift pans the page. The field itself
+  is never moved above the top of the screen: on a low screen a large `ExtraSafeGap` gives way first.
+
 ## [12.1.0] - 2026-11-24
 ### Added
 - New on-screen keyboard looks next to the classic one: `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`.

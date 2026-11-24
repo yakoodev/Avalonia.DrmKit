@@ -6,7 +6,7 @@
 
 		<!-- ВАЖНО: PackageId без префикса Avalonia.* -->
 		<PackageId>DrmKit.Avalonia</PackageId>
-		<Version>12.1.1-proto.2</Version>
+		<Version>12.1.1</Version>
 
 		<Authors>bezdar-yakoo</Authors>
 
@@ -32,6 +32,12 @@
 
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageReleaseNotes>
+			12.1.1: the field under the on-screen keyboard is now lifted by the
+			right amount. The lift was measured before the layout pass and came
+			out random: on an 800x600 screen the digit pad covered half of the
+			field. Scrolling no longer moves the field out of its scroll area;
+			the rest of the lift pans the page.
+			12.1.0:
 			On-screen keyboard: new looks next to the classic one, chosen with
 			OnScreenKeyboardStyle.TextVariant / DigitVariant (both default to
 			Classic, so nothing changes for an app that does not set them).
