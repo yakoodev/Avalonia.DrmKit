@@ -470,6 +470,18 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 var session = GetSession(kbPanel);
                 RestoreCompensation(session);
 
+                // The scroll offset has just been put back, but the field stays where the previous pass left
+                // it until the layout runs. This method is called several times in a row (on show, after the
+                // layout, when the keyboard gets its height), so measuring here without a layout pass gave a
+                // lift that depended on their order: 22 px instead of 131 on an 800×600 screen, or none at
+                // all. Lay out first, then measure the field in its natural place.
+                tl.UpdateLayout();
+
+                // The height captured by the caller may be from before the keyboard was measured (the 280 px
+                // default on the first show): after the layout pass the panel knows its real height.
+                keyboardHeight = ResolveKeyboardHeight(tb, kbPanel);
+                session.CurrentKeyboardHeight = keyboardHeight;
+
                 var bottomPoint = tb.TranslatePoint(new Point(0, tb.Bounds.Height), tl);
                 if (bottomPoint is null)
                     return;
@@ -492,6 +504,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     {
                         var newOffsetY = scrollViewer.Offset.Y + scrollDelta;
                         scrollViewer.Offset = new Vector(scrollViewer.Offset.X, newOffsetY);
+                        // The same trap as above: without a layout pass the field has not moved yet, and the
+                        // part already covered by scrolling was added to the pan a second time.
+                        tl.UpdateLayout();
                     }
                 }
 
