@@ -233,6 +233,15 @@
       <Setter Property="CornerRadius" Value="20"/>
       <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text2}"/>
     </Style>
+    <!-- «Отменить изменения» в полоске над буквами: та же пилюля, что «Скрыть», но без заливки. -->
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.pill.quiet">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
+    </Style>
+    <!-- Клавиша стоит на месте, но не нажимается: запятая в поле с целыми числами. -->
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.off">
+      <Setter Property="Opacity" Value="0.3"/>
+    </Style>
     <Style Selector="local|OnScreenKeyboard Button.osk-key Path.osk-icon">
       <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
     </Style>
@@ -281,6 +290,18 @@
     <Style Selector="local|OnScreenKeyboard Button.osk-key.quiet:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource Osk.M.Mod}"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.pill.quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
+    </Style>
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.pill.quiet:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
+    </Style>
+    <!-- Fluent красит выключенную кнопку своим серым: оставляем цвета клавиши, приглушает её Opacity. -->
+    <Style Selector="local|OnScreenKeyboard Button.osk-key.off:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Osk.M.Key}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Osk.M.KeyBorder}"/>
       <Setter Property="Foreground" Value="{DynamicResource Osk.M.Text}"/>
     </Style>
 

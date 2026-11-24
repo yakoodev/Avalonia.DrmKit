@@ -15,15 +15,10 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
     /// The new keyboard variants (<see cref="OnScreenKeyboardStyle"/>): the app's look, a strip with what is
     /// being typed and its limits, the UI language first, one-shot ⇧, a «?123» layer instead of a fixed row of
     /// symbols, and one clearly marked «Done». The classic layout stays as it was for apps that keep it.
+    /// Which keys stand where is in <see cref="OnScreenKeyboardLayouts"/>; this file turns the rows into buttons.
     /// </summary>
     public partial class OnScreenKeyboard
     {
-        private const string ShiftKey = "shift";
-        private const string SymbolsKey = "sym";
-        private const string LettersKey = "abc";
-        private const string LanguageKey = "lang";
-        private const string MinusOneKey = "minus1";
-        private const string PlusOneKey = "plus1";
         private const double Gap = 7;
 
         private bool _shift;
@@ -96,110 +91,40 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 caption.Inlines!.Add(run);
             }
 
-            var hide = MakeKey(OnScreenKeyboardKeys.Hide, "pill");
-            hide.MinHeight = 40;
-            hide.HorizontalAlignment = HorizontalAlignment.Right;
-            Grid.SetColumn(hide, 1);
-
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(4, 0, 0, 8) };
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8, Margin = new Thickness(4, 0, 0, 8) };
             grid.Children.Add(caption);
+
+            // Буквы: «Отменить изменения» стоит здесь, рядом со «Скрыть», а не в нижнем ряду: там она была
+            // между точкой и «Готово», и по ней попадали вместо «Готово» (вариант Б3, решение 24.11.2026).
+            // У цифр она в сетке клавиш (OnScreenKeyboardLayouts.Digits).
+            if (_mode == OnScreenKeyboardMode.Text)
+            {
+                var undo = MakeKey(new OnScreenKeyboardKey(OnScreenKeyboardKeys.Cancel, 1, "pill quiet"));
+                undo.MinHeight = 40;
+                Grid.SetColumn(undo, 1);
+                grid.Children.Add(undo);
+            }
+
+            var hide = MakeKey(new OnScreenKeyboardKey(OnScreenKeyboardKeys.Hide, 1, "pill"));
+            hide.MinHeight = 40;
+            Grid.SetColumn(hide, 2);
             grid.Children.Add(hide);
             return grid;
         }
 
-        // ---------- letters ----------
-
         private Control BuildLetters(double h)
-        {
-            var ru = KeyboardLayoutManager.Current == "ru";
-            var phone = OnScreenKeyboardStyle.TextVariant == OnScreenKeyboardTextVariant.Phone;
-            string[] r1, r2, r3;
-            if (_symbols)
-            {
-                r1 = new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" };
-                r2 = new[] { "@", "-", "_", "/", "(", ")", "\"", "'", ":", ";" };
-                r3 = phone ? new[] { "+", "*", "#", "%", "!", "?", "&", "№" } : new[] { "+", "*", "#", "%", "!", "?", "&", "№", ",", "." };
-            }
-            else if (ru)
-            {
-                r1 = "йцукенгшщзхъ".Select(c => c.ToString()).ToArray();
-                r2 = "фывапролджэё".Select(c => c.ToString()).ToArray();
-                r3 = "ячсмитьбю".Select(c => c.ToString()).ToArray();
-            }
-            else
-            {
-                r1 = "qwertyuiop".Select(c => c.ToString()).ToArray();
-                r2 = "asdfghjkl".Select(c => c.ToString()).ToArray();
-                r3 = "zxcvbnm".Select(c => c.ToString()).ToArray();
-            }
-
-            var row1 = Row(h, r1.Select(k => (k, 1.0, "")).ToArray());
-            // English middle row is one key shorter: half-key insets keep it under the top row, like a real keyboard.
-            var row2 = Row(h, (!_symbols && !ru ? new[] { ("", 0.5, "") } : Array.Empty<(string, double, string)>())
-                .Concat(r2.Select(k => (k, 1.0, "")))
-                .Concat(!_symbols && !ru ? new[] { ("", 0.5, "") } : Array.Empty<(string, double, string)>()).ToArray());
-            var row3Keys = r3.Select(k => (k, 1.0, "")).ToList();
-            if (!_symbols)
-                row3Keys.Insert(0, (ShiftKey, 1.5, "mod"));
-            if (phone)
-                row3Keys.Add((OnScreenKeyboardKeys.Backspace, 1.5, "mod"));
-            else if (!_symbols)
-            {
-                row3Keys.Add((",", 0.75, "mod"));
-                row3Keys.Add((".", 0.75, "mod"));
-            }
-            var row3 = Row(h, row3Keys.ToArray());
-
-            var layerKey = _symbols ? LettersKey : SymbolsKey;
-            var bottom = phone
-                ? Row(h, (layerKey, 1.5, "mod"), (LanguageKey, 1.3, "mod"), ("space", 5, ""), (".", 1, "mod"),
-                         (OnScreenKeyboardKeys.Cancel, 1.6, "quiet"), (OnScreenKeyboardKeys.Enter, 2.2, "go"))
-                : Row(h, (layerKey, 1.5, "mod"), (LanguageKey, 1.5, "mod"), ("space", 8, ""));
-
-            var letters = Stack(row1, row2, row3, bottom);
-            if (phone)
-                return letters;
-
-            // Action column: ⌫ level with the top row, «Undo changes» next, «Done» two rows high.
-            var column = new Grid { RowDefinitions = new RowDefinitions($"{h},{h},*"), RowSpacing = Gap };
-            var back = MakeKey(OnScreenKeyboardKeys.Backspace, "mod");
-            var undo = MakeKey(OnScreenKeyboardKeys.Cancel, "quiet");
-            var done = MakeKey(OnScreenKeyboardKeys.Enter, "go");
-            Grid.SetRow(undo, 1);
-            Grid.SetRow(done, 2);
-            column.Children.Add(back);
-            column.Children.Add(undo);
-            column.Children.Add(done);
-
-            var split = new Grid { ColumnDefinitions = new ColumnDefinitions("5.2*,*"), ColumnSpacing = Gap + 3 };
-            Grid.SetColumn(column, 1);
-            split.Children.Add(letters);
-            split.Children.Add(column);
-            return split;
-        }
-
-        // ---------- digits ----------
+            => Stack(OnScreenKeyboardLayouts.PhoneLetters(KeyboardLayoutManager.Current, _symbols)
+                .Select(row => (Control)Row(h, row)).ToArray());
 
         private Control BuildDigits(double h)
         {
-            var sep = _mode == OnScreenKeyboardMode.Decimal ? OnScreenKeyboardKeys.DecimalSeparator : "";
-            if (OnScreenKeyboardStyle.DigitVariant == OnScreenKeyboardDigitVariant.Row)
-            {
-                var digits = Row(h, new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" }.Select(k => (k, 1.0, "digit"))
-                    .Append((OnScreenKeyboardKeys.Backspace, 1.3, "mod")).ToArray());
-                var actions = Row(h, (MinusOneKey, 1.6, "mod"), (PlusOneKey, 1.6, "mod"), (sep, 1, "mod"), ("", 3.6, ""),
-                                     (OnScreenKeyboardKeys.Cancel, 1.6, "quiet"), (OnScreenKeyboardKeys.Enter, 2.5, "go"));
-                return Stack(digits, actions);
-            }
-
-            // Сетка 4×4 по центру: ⌫ и разделитель в правом столбце, «Отменить изменения» и «Готово»
-            // отдельной строкой под цифрами (вариант Е, решение 13.11). У целых полей место разделителя пустое.
-            var pad = Stack(
-                Row(h, ("1", 1, "digit"), ("2", 1, "digit"), ("3", 1, "digit"), (OnScreenKeyboardKeys.Backspace, 1, "mod")),
-                Row(h, ("4", 1, "digit"), ("5", 1, "digit"), ("6", 1, "digit"), (sep, 1, "mod")),
-                Row(h, ("7", 1, "digit"), ("8", 1, "digit"), ("9", 1, "digit"), ("0", 1, "digit")),
-                Row(h, (OnScreenKeyboardKeys.Cancel, 2, "quiet"), (OnScreenKeyboardKeys.Enter, 2, "go")));
-            pad.MaxWidth = 520;
+            var variant = OnScreenKeyboardStyle.DigitVariant;
+            var rows = OnScreenKeyboardLayouts.Digits(variant,
+                withSeparator: _mode == OnScreenKeyboardMode.Decimal,
+                dimSeparator: OnScreenKeyboardStyle.DimSeparatorInIntegerFields);
+            var pad = Stack(rows.Select(row => (Control)Row(h, row)).ToArray());
+            // Stretch + MaxWidth: растянутый элемент, упёршийся в MaxWidth, встаёт по центру.
+            pad.MaxWidth = OnScreenKeyboardLayouts.DigitsMaxWidth(variant);
             pad.HorizontalAlignment = HorizontalAlignment.Stretch;
             return pad;
         }
@@ -214,40 +139,39 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
             return panel;
         }
 
-        private Grid Row(double h, params (string token, double weight, string cls)[] keys)
+        private Grid Row(double h, OnScreenKeyboardKey[] keys)
         {
             var grid = new Grid { Height = h, ColumnSpacing = Gap };
             for (var i = 0; i < keys.Length; i++)
             {
-                grid.ColumnDefinitions.Add(new ColumnDefinition(keys[i].weight, GridUnitType.Star));
-                Control cell = keys[i].token.Length == 0
+                grid.ColumnDefinitions.Add(new ColumnDefinition(keys[i].Weight, GridUnitType.Star));
+                Control cell = keys[i].IsBlank
                     ? new Border { IsHitTestVisible = false }
-                    : MakeKey(keys[i].token, keys[i].cls);
+                    : MakeKey(keys[i]);
                 Grid.SetColumn(cell, i);
                 grid.Children.Add(cell);
             }
             return grid;
         }
 
-        private Button MakeKey(string token, string cls)
+        private Button MakeKey(OnScreenKeyboardKey key)
         {
+            var token = key.Token;
             var upper = _caps || _shift;
+            var letter = upper && token.Length == 1 && char.IsLetter(token[0]) ? token.ToUpperInvariant() : token;
+            var layout = KeyboardLayoutManager.Current;
             var (content, name) = token switch
             {
                 OnScreenKeyboardKeys.Backspace => ((object)Icon(IconBackspace, filled: false), "Backspace"),
-                ShiftKey => (Icon(IconShift, filled: upper), "Shift"),
+                OnScreenKeyboardLayouts.Shift => (Icon(IconShift, filled: upper), "Shift"),
                 OnScreenKeyboardKeys.Hide => (WithIcon(OnScreenKeyboardLabels.Hide, IconChevronDown, iconFirst: true), OnScreenKeyboardLabels.Hide),
                 OnScreenKeyboardKeys.Enter => (WithIcon(OnScreenKeyboardLabels.Done, IconCheck, iconFirst: false), OnScreenKeyboardLabels.Done),
-                OnScreenKeyboardKeys.Cancel => (Wrapped(cls == "quiet" && OnScreenKeyboardStyle.TextVariant == OnScreenKeyboardTextVariant.Phone && _mode == OnScreenKeyboardMode.Text
-                                                    ? OnScreenKeyboardText.Undo : OnScreenKeyboardLabels.CancelChanges), OnScreenKeyboardLabels.CancelChanges),
-                SymbolsKey => (OnScreenKeyboardText.Symbols, OnScreenKeyboardText.Symbols),
-                LettersKey => (OnScreenKeyboardText.Letters(KeyboardLayoutManager.Current), OnScreenKeyboardText.Letters(KeyboardLayoutManager.Current)),
-                LanguageKey => (KeyboardLayoutManager.Current == "ru" ? "EN" : "RU", KeyboardLayoutManager.Current == "ru" ? "EN" : "RU"),
-                MinusOneKey => ("−1", "−1"),
-                PlusOneKey => ("+1", "+1"),
-                "space" => (OnScreenKeyboardText.Space, OnScreenKeyboardText.Space),
-                _ => (upper && token.Length == 1 && char.IsLetter(token[0]) ? token.ToUpperInvariant() : token,
-                      upper && token.Length == 1 && char.IsLetter(token[0]) ? token.ToUpperInvariant() : token),
+                OnScreenKeyboardKeys.Cancel => (Wrapped(OnScreenKeyboardLabels.CancelChanges), OnScreenKeyboardLabels.CancelChanges),
+                OnScreenKeyboardLayouts.Symbols => (OnScreenKeyboardText.Symbols, OnScreenKeyboardText.Symbols),
+                OnScreenKeyboardLayouts.Letters => (OnScreenKeyboardText.Letters(layout), OnScreenKeyboardText.Letters(layout)),
+                OnScreenKeyboardLayouts.Language => (layout == "ru" ? "EN" : "RU", layout == "ru" ? "EN" : "RU"),
+                OnScreenKeyboardLayouts.Space => (OnScreenKeyboardText.Space, OnScreenKeyboardText.Space),
+                _ => (letter, letter),
             };
 
             var btn = new Button
@@ -259,10 +183,16 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             };
             btn.Classes.Add("osk-key");
-            if (cls.Length > 0)
+            foreach (var cls in key.Class.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 btn.Classes.Add(cls);
-            if (token == ShiftKey && (_caps || _shift))
+            if (token == OnScreenKeyboardLayouts.Shift && upper)
                 btn.Classes.Add("on");
+            if (!key.Enabled)
+            {
+                // Клавиша на месте, но приглушена и не нажимается: запятая в поле с целыми числами.
+                btn.IsEnabled = false;
+                btn.Classes.Add("off");
+            }
             AutomationProperties.SetName(btn, name);
             btn.Click += (_, __) => HandleKey(token);
             return btn;
@@ -317,7 +247,7 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         {
             switch (key)
             {
-                case ShiftKey:
+                case OnScreenKeyboardLayouts.Shift:
                     // One tap — the next letter is capital; a second tap within 0.4 s — Caps Lock; tap again — off.
                     var now = DateTime.UtcNow;
                     if (_caps)
@@ -333,40 +263,18 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     Rebuild();
                     return true;
 
-                case SymbolsKey:
-                case LettersKey:
-                    _symbols = key == SymbolsKey;
+                case OnScreenKeyboardLayouts.Symbols:
+                case OnScreenKeyboardLayouts.Letters:
+                    _symbols = key == OnScreenKeyboardLayouts.Symbols;
                     Rebuild();
                     return true;
 
-                case LanguageKey:
+                case OnScreenKeyboardLayouts.Language:
                     _userPickedLayout = true;
                     KeyboardLayoutManager.SetCurrent(KeyboardLayoutManager.Current == "ru" ? "en" : "ru");
                     return true;
-
-                case MinusOneKey:
-                case PlusOneKey:
-                    Step(key == PlusOneKey ? 1 : -1);
-                    return true;
             }
             return false;
-        }
-
-        /// <summary>«−1» / «+1» on the digit row: nudge the number; the app's own checks still apply to the text.</summary>
-        private void Step(int delta)
-        {
-            if (_target is not { } tb)
-                return;
-            var sep = OnScreenKeyboardKeys.DecimalSeparator;
-            var text = (tb.Text ?? "").Trim();
-            if (!double.TryParse(text.Replace(sep, "."), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
-                value = 0;
-            value += delta;
-            if (value < 0 && _mode != OnScreenKeyboardMode.Decimal)
-                value = 0;
-            tb.Text = value.ToString(CultureInfo.InvariantCulture).Replace(".", sep);
-            tb.SelectionStart = tb.SelectionEnd = tb.Text.Length;
-            tb.Focus();
         }
 
         /// <summary>After a letter: one-shot ⇧ goes off; for names it comes back at the next word.</summary>

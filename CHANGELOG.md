@@ -5,14 +5,21 @@ All notable changes to this project are documented in this file.
 The format follows Keep a Changelog and SemVer.
 
 ## [Unreleased] — 12.1.0 (prototype)
-### Changed (13.11)
-- `Pad`: a centred 4×4 grid — 1-2-3 on top, ⌫ and the separator in the right column, 0 after 9,
-  «Undo changes» and «Done» in a row under the digits (the side column of actions was in the way).
+### Changed (24.11)
+- Digits: new look `TwoRows` — two rows of five digits, then ⌫ over the decimal separator, then «Undo changes»
+  over «Done». The lowest pad (two key rows), at most 880 px wide. `Pad` (the 4×4 grid: ⌫ and the separator
+  in the right column, 0 after 9, the actions in a row under the digits) stays as an option.
+- Whole-number fields in the new digit looks: the separator key stays in its place dimmed and cannot be
+  pressed, so the keys do not jump from field to field (`OnScreenKeyboardStyle.DimSeparatorInIntegerFields`,
+  default `true`; `false` leaves its cell empty).
+- Letters `Phone`: «Undo changes» moved from the bottom row to the strip above the keys, next to «Hide».
+  The space bar is wider and the bottom row ends with «Done» only.
+- Removed the looks that were not chosen: letters `ActionColumn`, digits `Row` (1…0 in one row and −1 / +1).
+- `OnScreenKeyboardLayouts` / `OnScreenKeyboardKey`: the rows of the new looks as plain data, covered by tests.
 ### Added
 - `OnScreenKeyboardStyle.TextVariant` / `DigitVariant`: new keyboard looks next to the classic one (default
-  stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» in the bottom row) and
-  `ActionColumn` (⌫ / «Undo changes» / a large «Done» in a right column). Digits: `Pad` (1-2-3 on top,
-  ⌫ next to 0, «Done» on the side) and `Row` (two low rows: 1…0 and ⌫, then −1 / +1 and the actions).
+  stays `Classic`). Letters: `Phone` (⇧ and ⌫ at the ends of the third row, «Done» at the end of the bottom
+  row). Digits: `TwoRows` and `Pad`.
 - The new looks: app-like colours and radii (`Osk.M.*` resources, light and dark), 44–58 px keys by screen
   height, a strip with the field name, its limits and the value before editing («Вес · от 40 до 133 · было 65»)
   and a «Hide» pill; the UI language first; one-shot ⇧ (double tap — Caps Lock); a «?123» layer instead of a

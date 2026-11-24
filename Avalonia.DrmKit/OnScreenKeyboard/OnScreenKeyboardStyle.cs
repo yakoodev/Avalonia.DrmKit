@@ -9,10 +9,11 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
     {
         /// <summary>The keyboard up to 12.0.10: a row of symbols, digits, letters and six action keys.</summary>
         Classic,
-        /// <summary>Like a phone: ⇧ and ⌫ at the ends of the third row, «Done» at the end of the bottom row.</summary>
+        /// <summary>
+        /// Like a phone: ⇧ and ⌫ at the ends of the third row, «Done» at the end of the bottom row,
+        /// «Undo changes» in the strip above the keys next to «Hide».
+        /// </summary>
         Phone,
-        /// <summary>Letters on the left, ⌫ / «Undo changes» / a large «Done» in a column on the right.</summary>
-        ActionColumn,
     }
 
     /// <summary>Digit keyboard look. <see cref="Classic"/> is the pad up to 12.0.10.</summary>
@@ -22,20 +23,21 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         Classic,
         /// <summary>4×4 grid 1-2-3 on top, ⌫ and the separator in the right column, «Undo changes» and «Done» in a row below the digits.</summary>
         Pad,
-        /// <summary>Two low rows: digits 1…0 and ⌫, then −1 / +1 and the actions.</summary>
-        Row,
+        /// <summary>Two rows of five digits, then ⌫ over the separator, then «Undo changes» over «Done». The lowest pad.</summary>
+        TwoRows,
     }
 
     /// <summary>
-    /// Which keyboard the app shows. Both default to <c>Classic</c>, so an app that does not set them keeps
-    /// the old keyboard; changing them rebuilds an open keyboard at once.
+    /// Which keyboard the app shows. Both variants default to <c>Classic</c>, so an app that does not set them
+    /// keeps the old keyboard; changing a setting rebuilds an open keyboard at once.
     /// </summary>
     public static class OnScreenKeyboardStyle
     {
         private static OnScreenKeyboardTextVariant _text;
         private static OnScreenKeyboardDigitVariant _digits;
+        private static bool _dimSeparator = true;
 
-        /// <summary>A variant changed; an open keyboard rebuilds itself.</summary>
+        /// <summary>A setting changed; an open keyboard rebuilds itself.</summary>
         public static event EventHandler? Changed;
 
         /// <summary>Letter keyboard look.</summary>
@@ -50,6 +52,16 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         {
             get => _digits;
             set { if (_digits == value) return; _digits = value; Changed?.Invoke(null, EventArgs.Empty); }
+        }
+
+        /// <summary>
+        /// New digit looks, whole-number fields: true (default) — the decimal separator key stays in its place
+        /// dimmed and cannot be pressed, so the keys do not jump from field to field; false — its cell is empty.
+        /// </summary>
+        public static bool DimSeparatorInIntegerFields
+        {
+            get => _dimSeparator;
+            set { if (_dimSeparator == value) return; _dimSeparator = value; Changed?.Invoke(null, EventArgs.Empty); }
         }
     }
 
@@ -94,6 +106,5 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
         public static string Symbols => "?123";
         public static string Letters(string layout) => layout == "ru" ? "АБВ" : "ABC";
         public static string Was(string value) => IsRussian ? $"было {value}" : $"was {value}";
-        public static string Undo => IsRussian ? "Отменить" : "Undo";
     }
 }
