@@ -77,6 +77,12 @@ jobs:
   publish:
     needs: pack
     runs-on: ubuntu-latest
+    # NuGet Trusted Publishing: the job proves to nuget.org which repository and workflow it runs in
+    # (a GitHub OIDC token) and gets an API key that lives one hour. No long-lived key is stored anywhere:
+    # the NUGET_API_KEY secret expired and the 12.1.0 push failed with 403 (24.11.2026).
+    # The policy lives on nuget.org (owner Yakoo): repository yakoodev/Avalonia.DrmKit, workflow ci.yml.
+    permissions:
+      id-token: write
     steps:
       - name: Download nupkg
         uses: actions/download-artifact@v4
@@ -101,9 +107,16 @@ jobs:
           echo "ERROR: PackageId с префиксом 'Avalonia.' зарезервирован NuGet (prefix reservation). Смените PackageId."; 
           exit 1
 
+      # Requested right before the push: the temporary key is valid for one hour and one use.
+      - name: NuGet login (OIDC, temporary API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: Yakoo   # nuget.org profile name that owns DrmKit.Avalonia (public, not an email)
+
       - name: Push to NuGet.org
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           set -e
           FILE=$(ls artifacts/*.nupkg | head -n1)
