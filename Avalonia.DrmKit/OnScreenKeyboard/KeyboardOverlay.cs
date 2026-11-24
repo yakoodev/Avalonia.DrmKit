@@ -101,6 +101,9 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
         private const string OverlayKey = "__DrmKit_KeyboardOverlay_Panel";
         private const double DefaultKeyboardHeight = 280;
+
+        /// <summary>How close to the top of its scroll area or of the screen the lifted field may get, px.</summary>
+        private const double LiftEdgeMargin = 8;
         private static readonly ConditionalWeakTable<Border, KeyboardOverlaySessionState> s_sessions = new();
         private static readonly ConditionalWeakTable<TopLevel, InputGateState> s_inputGates = new();
 
@@ -492,6 +495,15 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                     return;
 
                 var overflow = bottomPoint.Value.Y - threshold;
+
+                // The field itself must stay on the screen: on a low screen a large ExtraSafeGap asks for more
+                // than there is room above the keyboard, and then the gap gives way, not the field.
+                var topPoint = tb.TranslatePoint(new Point(0, 0), tl);
+                if (topPoint is not null)
+                    overflow = Math.Min(overflow, Math.Max(0, topPoint.Value.Y - LiftEdgeMargin));
+                if (overflow <= 0)
+                    return;
+
                 var scrollViewer = FindNearestScrollViewer(tb);
                 if (scrollViewer is not null)
                 {
@@ -499,7 +511,12 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
 
                     var maxOffsetY = Math.Max(0, scrollViewer.Extent.Height - scrollViewer.Viewport.Height);
                     var availableDown = Math.Max(0, maxOffsetY - scrollViewer.Offset.Y);
-                    var scrollDelta = Math.Min(overflow, availableDown);
+                    // Scroll only while the field stays inside its own scroll area. Scrolling further hid the
+                    // top of the field behind the edge of that area (seen on 800×600 with a 100 px gap); the
+                    // rest of the lift is done by panning the whole page below.
+                    var topInScrollArea = tb.TranslatePoint(new Point(0, 0), scrollViewer);
+                    var roomInScrollArea = topInScrollArea is null ? 0 : Math.Max(0, topInScrollArea.Value.Y - LiftEdgeMargin);
+                    var scrollDelta = Math.Min(Math.Min(overflow, availableDown), roomInScrollArea);
                     if (scrollDelta > 0)
                     {
                         var newOffsetY = scrollViewer.Offset.Y + scrollDelta;
@@ -514,8 +531,10 @@ namespace Avalonia.DrmKit.OnScreenKeyboard
                 if (remainingBottom is null)
                     return;
 
-                var remaining = remainingBottom.Value.Y - threshold;
-                if (remaining <= 0)
+                // What is left of the lift decided above (already limited so the field stays on the screen).
+                var lifted = bottomPoint.Value.Y - remainingBottom.Value.Y;
+                var remaining = overflow - lifted;
+                if (remaining <= 0.5)
                     return;
 
                 var panRoot = FindPanRoot(tb, hostPanel, kbPanel);
